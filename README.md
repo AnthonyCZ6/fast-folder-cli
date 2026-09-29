@@ -76,11 +76,30 @@ del disco y de la caché del sistema de archivos: la segunda búsqueda suele ser
 ### Requisitos
 
 - Windows 10 u 11 (también compila en Linux y macOS, con funciones limitadas).
-- [Go 1.23 o superior](https://go.dev/dl/) para compilar. Con winget:
+- [Go 1.23 o superior](https://go.dev/dl/), solo si vas a usar `go install` o compilar el
+  código. Con winget:
 
   ```powershell
   winget install GoLang.Go
   ```
+
+### Descargar el ejecutable (sin instalar Go)
+
+Descarga el `.exe` de la [última versión](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest):
+
+| Equipo | Archivo |
+| --- | --- |
+| Windows x64 (procesadores Intel o AMD, la mayoría de los equipos) | [fast-folder-cli-windows-amd64.exe](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest/download/fast-folder-cli-windows-amd64.exe) |
+| Windows ARM64 (procesadores Snapdragon, Surface Pro X) | [fast-folder-cli-windows-arm64.exe](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest/download/fast-folder-cli-windows-arm64.exe) |
+
+Renómbralo a `fast-folder-cli.exe` y sigue los pasos de
+[Agregar al PATH](#agregar-al-path-de-windows).
+
+> ⚠️ Los ejecutables no están firmados digitalmente, así que Windows SmartScreen o tu
+> antivirus pueden mostrar una advertencia la primera vez. Para comprobar que el archivo es
+> el original, compara `Get-FileHash .\fast-folder-cli.exe` con el valor de `checksums.txt`
+> publicado en la versión; después puedes quitar la marca de descarga con
+> `Unblock-File .\fast-folder-cli.exe`.
 
 ### Instalación rápida con `go install`
 
@@ -119,7 +138,7 @@ Así podrás ejecutar `fast-folder-cli` desde cualquier carpeta y cualquier term
 
 #### Opción A — PowerShell (recomendada, no requiere administrador)
 
-Desde la carpeta del proyecto, después de compilar:
+Desde la carpeta donde está `fast-folder-cli.exe` (descargado o compilado):
 
 ```powershell
 $dest = "$env:LOCALAPPDATA\Programs\fast-folder-cli"
