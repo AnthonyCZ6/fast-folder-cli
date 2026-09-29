@@ -317,7 +317,7 @@ Distribuido bajo la licencia MIT. Consulta el archivo [LICENSE](LICENSE) para m�
 
 ## 📬 Contacto
 
-**Tony** — autor y mantenedor
+**Anthony** — autor y mantenedor
 
 - GitHub: [@AnthonyCZ6](https://github.com/AnthonyCZ6)
 - Correo: [20243ds055@utez.edu.mx](mailto:20243ds055@utez.edu.mx)
