@@ -82,6 +82,16 @@ del disco y de la caché del sistema de archivos: la segunda búsqueda suele ser
   winget install GoLang.Go
   ```
 
+### Instalación rápida con `go install`
+
+```powershell
+go install github.com/AnthonyCZ6/fast-folder-cli@latest
+```
+
+Go descarga, compila e instala el ejecutable en `%USERPROFILE%\go\bin`, carpeta que el
+instalador de Go ya agrega al PATH: no hace falta clonar el repositorio ni el paso
+[Agregar al PATH](#agregar-al-path-de-windows).
+
 ### Compilar el ejecutable `.exe`
 
 ```powershell
@@ -132,14 +142,6 @@ if (($userPath -split ";") -notcontains $dest) {
 4. En **Variables de usuario**, selecciona `Path` → **Editar** → **Nuevo** y pega la ruta
    de la carpeta.
 5. Acepta todas las ventanas.
-
-#### Opción C — `go install`
-
-```powershell
-go install -trimpath -ldflags "-s -w" .
-```
-
-El ejecutable se instala en `%USERPROFILE%\go\bin`, que el instalador de Go ya agrega al PATH.
 
 #### Verificar la instalación
 

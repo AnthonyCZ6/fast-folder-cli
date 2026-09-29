@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"fast-folder-cli/internal/explorer"
-	"fast-folder-cli/internal/pathutil"
-	"fast-folder-cli/internal/search"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/explorer"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/pathutil"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
 
 // Códigos de salida (compatibles con la convención de grep).
