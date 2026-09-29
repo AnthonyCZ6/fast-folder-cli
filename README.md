@@ -85,7 +85,7 @@ del disco y de la caché del sistema de archivos: la segunda búsqueda suele ser
 ### Compilar el ejecutable `.exe`
 
 ```powershell
-git clone https://github.com/<tu-usuario>/fast-folder-cli.git
+git clone https://github.com/AnthonyCZ6/fast-folder-cli.git
 cd fast-folder-cli
 go build -trimpath -ldflags "-s -w -X main.version=1.0.0" -o fast-folder-cli.exe .
 ```
@@ -317,9 +317,9 @@ Distribuido bajo la licencia MIT. Consulta el archivo [LICENSE](LICENSE) para m�
 
 **Tony** — autor y mantenedor
 
-- GitHub: [@tu-usuario](https://github.com/tu-usuario)
-- Correo: [tu-correo@ejemplo.com](mailto:tu-correo@ejemplo.com)
+- GitHub: [@AnthonyCZ6](https://github.com/AnthonyCZ6)
+- Correo: [20243ds055@utez.edu.mx](mailto:20243ds055@utez.edu.mx)
 - Reporta errores o propone mejoras en
-  [Issues](https://github.com/tu-usuario/fast-folder-cli/issues).
+  [Issues](https://github.com/AnthonyCZ6/fast-folder-cli/issues).
 
 Si esta herramienta te ahorra tiempo, ¡considera darle una ⭐ al repositorio!
