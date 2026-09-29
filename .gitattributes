@@ -1,0 +1,4 @@
+# Finales de línea LF en todos los sistemas (gofmt usa LF).
+* text=auto eol=lf
+
+*.exe binary

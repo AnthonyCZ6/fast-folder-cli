@@ -1,0 +1,145 @@
+package cli
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// Secuencias ANSI de color.
+const (
+	ansiReset  = "\x1b[0m"
+	ansiBold   = "\x1b[1m"
+	ansiDim    = "\x1b[2m"
+	ansiGreen  = "\x1b[32m"
+	ansiYellow = "\x1b[33m"
+	ansiCyan   = "\x1b[36m"
+)
+
+// summary reúne los datos que se muestran al terminar la búsqueda.
+type summary struct {
+	found       int64
+	scanned     int64
+	denied      int64
+	opened      string
+	openErr     error
+	interrupted bool
+	elapsed     time.Duration
+}
+
+// printer da formato a la salida en consola. Con color desactivado (salida
+// redirigida a un archivo o NO_COLOR definido) tampoco usa caracteres de
+// dibujo de cajas, para que el texto sea fácil de procesar con otras
+// herramientas.
+type printer struct {
+	w     io.Writer
+	color bool
+}
+
+func newPrinter(w io.Writer, color bool) *printer {
+	return &printer{w: w, color: color}
+}
+
+func (p *printer) paint(s string, codes ...string) string {
+	if !p.color || s == "" {
+		return s
+	}
+	return strings.Join(codes, "") + s + ansiReset
+}
+
+func (p *printer) header(term, root string, all bool) {
+	hidden := "excluidas"
+	if all {
+		hidden = "incluidas"
+	}
+	fmt.Fprintf(p.w, "%s %s en %s %s\n\n",
+		p.paint("Buscando", ansiBold, ansiCyan),
+		p.paint(`"`+term+`"`, ansiBold),
+		root,
+		p.paint("(ocultas/sistema: "+hidden+")", ansiDim),
+	)
+}
+
+// match imprime una coincidencia: el índice, la ruta de la carpeta padre y el
+// nombre de la carpeta encontrada resaltado.
+func (p *printer) match(n int64, path string) {
+	parent, name := filepath.Split(path)
+	fmt.Fprintf(p.w, "  %s %s%s\n",
+		p.paint("["+strconv.FormatInt(n, 10)+"]", ansiGreen),
+		parent,
+		p.paint(name, ansiBold, ansiGreen),
+	)
+}
+
+func (p *printer) summary(s summary) {
+	rule := strings.Repeat("-", 64)
+	if p.color {
+		rule = strings.Repeat("─", 64)
+	}
+	if s.found > 0 {
+		fmt.Fprintln(p.w)
+	}
+	fmt.Fprintln(p.w, p.paint(rule, ansiDim))
+
+	if s.found == 0 {
+		p.field("Resultados", p.paint("sin coincidencias", ansiYellow))
+	} else {
+		p.field("Resultados", p.paint(plural(s.found, "carpeta encontrada", "carpetas encontradas"), ansiBold, ansiGreen))
+	}
+
+	scanned := plural(s.scanned, "carpeta", "carpetas")
+	if s.denied > 0 {
+		scanned += p.paint(" ("+formatInt(s.denied)+" sin acceso, omitidas)", ansiDim)
+	}
+	p.field("Analizadas", scanned)
+
+	if s.opened != "" && s.openErr == nil {
+		p.field("Explorador", s.opened)
+	}
+	if s.interrupted {
+		p.field("Estado", p.paint("búsqueda interrumpida (resultados parciales)", ansiYellow))
+	}
+	p.field("Tiempo", p.paint(formatInt(s.elapsed.Milliseconds())+" ms", ansiBold, ansiCyan))
+}
+
+func (p *printer) field(label, value string) {
+	fmt.Fprintf(p.w, "%s %s\n", p.paint(fmt.Sprintf("%-11s:", label), ansiDim), value)
+}
+
+// plural formatea n junto al sustantivo en singular o plural.
+func plural(n int64, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return formatInt(n) + " " + many
+}
+
+// formatInt formatea un entero con separador de miles: 52341 -> "52,341".
+func formatInt(n int64) string {
+	if n < 0 {
+		return "-" + formatInt(-n)
+	}
+	s := strconv.FormatInt(n, 10)
+	var b strings.Builder
+	for i, r := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// supportsColor indica si w es una consola capaz de mostrar colores ANSI.
+// Respeta la convención NO_COLOR (https://no-color.org).
+func supportsColor(w io.Writer) bool {
+	if _, ok := os.LookupEnv("NO_COLOR"); ok {
+		return false
+	}
+	f, ok := w.(*os.File)
+	return ok && enableANSI(f)
+}

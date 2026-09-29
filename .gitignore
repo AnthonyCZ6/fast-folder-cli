@@ -1,0 +1,35 @@
+# Binarios compilados
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/
+/dist/
+/fast-folder-cli
+
+# Pruebas y cobertura
+*.test
+*.out
+coverage.*
+*.prof
+
+# Espacios de trabajo de Go
+go.work
+go.work.sum
+
+# Variables de entorno locales
+.env
+
+# Editores e IDEs
+.idea/
+.vscode/
+*.swp
+*~
+
+# Archivos del sistema operativo
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+.DS_Store
