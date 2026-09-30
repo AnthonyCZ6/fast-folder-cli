@@ -1,5 +1,7 @@
 # ⚡ fast-folder-cli
 
+[![Release](https://img.shields.io/github/v/release/AnthonyCZ6/fast-folder-cli?sort=semver)](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest)
+[![Workflow de release](https://github.com/AnthonyCZ6/fast-folder-cli/actions/workflows/release.yml/badge.svg)](https://github.com/AnthonyCZ6/fast-folder-cli/actions/workflows/release.yml)
 ![Go](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows&logoColor=white)
 ![Dependencias](https://img.shields.io/badge/dependencias-0-brightgreen)
@@ -303,6 +305,9 @@ recorre, aunque esté oculta: `-p %APPDATA%` funciona sin `--all`.
 
 ```text
 fast-folder-cli/
+├── .github/
+│   ├── workflows/release.yml      # Pruebas, compilación y publicación de versiones
+│   └── scripts/release-notes.sh   # Notas de versión a partir de los commits
 ├── main.go                        # Punto de entrada
 ├── internal/
 │   ├── cli/                       # Banderas, formato de salida y colores de consola
@@ -321,6 +326,30 @@ go test ./...     # pruebas unitarias (incluye pruebas específicas de Windows: 
 go vet ./...      # análisis estático
 gofmt -l .        # comprobar formato
 ```
+
+### Publicar una nueva versión
+
+Las versiones se publican automáticamente con GitHub Actions
+([`release.yml`](.github/workflows/release.yml)). Basta con crear y subir una etiqueta
+[semántica](https://semver.org/lang/es/):
+
+```powershell
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+El workflow entonces:
+
+1. Ejecuta las pruebas en Windows (con Go 1.23 y con la versión estable más reciente) y en
+   Linux con el detector de condiciones de carrera (`-race`).
+2. Compila `fast-folder-cli-windows-amd64.exe` y `fast-folder-cli-windows-arm64.exe` con la
+   versión tomada de la etiqueta, y genera `checksums.txt` (SHA-256).
+3. Crea el release en GitHub con los ejecutables y notas generadas a partir de los mensajes de
+   commit, agrupados por tipo (`feat`, `fix`, `docs`...).
+
+Las etiquetas con sufijo (`v1.2.0-rc.1`) se publican como *prerelease*. Para comprobar que
+todo compila sin publicar nada, ejecuta el workflow a mano desde la pestaña **Actions**
+(**Release → Run workflow**): los ejecutables quedarán disponibles como artefacto.
 
 ## 🤝 Contribuir
 
