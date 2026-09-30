@@ -63,21 +63,32 @@ SolidCompression=yes
 Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Messages]
-FinishedLabelNoIcons=El asistente terminó de instalar [name] en su equipo.%n%nPara usarlo, abra una terminal nueva (PowerShell o Símbolo del sistema) y escriba:%n%n    fast-folder-cli --help
+FinishedLabelNoIcons=El asistente terminó de instalar [name] en su equipo.%n%nPara usarlo, abra una terminal nueva (PowerShell o Símbolo del sistema) y escriba:%n%n    fast --help%n%no, con el nombre completo, fast-folder-cli --help
 
 [CustomMessages]
 Options=Opciones:
 AddToPath=Agregar fast-folder-cli al PATH (recomendado: permite usarlo desde cualquier terminal)
+FastAlias=Crear el atajo "fast" (para escribir fast en lugar de fast-folder-cli)
 OpenTerminal=Abrir una terminal para probar fast-folder-cli
 
 [Tasks]
 Name: "addtopath"; Description: "{cm:AddToPath}"; GroupDescription: "{cm:Options}"
+Name: "fastalias"; Description: "{cm:FastAlias}"; GroupDescription: "{cm:Options}"
 
 [Files]
 Source: "..\dist\fast-folder-cli-windows-amd64.exe"; DestDir: "{app}"; DestName: "{#AppExe}"; Check: not IsArm64; Flags: ignoreversion
 Source: "..\dist\fast-folder-cli-windows-arm64.exe"; DestDir: "{app}"; DestName: "{#AppExe}"; Check: IsArm64; Flags: ignoreversion
+; Atajo "fast": copia del mismo ejecutable (Inno Setup la guarda una sola vez
+; dentro del instalador). Funciona en cualquier terminal, a diferencia de un
+; alias de PowerShell, y se actualiza y desinstala junto con el programa.
+Source: "..\dist\fast-folder-cli-windows-amd64.exe"; DestDir: "{app}"; DestName: "fast.exe"; Check: not IsArm64; Tasks: fastalias; Flags: ignoreversion
+Source: "..\dist\fast-folder-cli-windows-arm64.exe"; DestDir: "{app}"; DestName: "fast.exe"; Check: IsArm64; Tasks: fastalias; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
+
+[InstallDelete]
+; Si al actualizar se desmarca el atajo, se elimina el que existía.
+Type: files; Name: "{app}\fast.exe"; Tasks: not fastalias
 
 [Run]
 ; Abre cmd con la carpeta ya en el PATH de esa ventana (los procesos lanzados

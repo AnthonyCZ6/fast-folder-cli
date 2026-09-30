@@ -144,6 +144,8 @@ jobs:
 
           & "$dir\fast-folder-cli.exe" --version
           if ($LASTEXITCODE -ne 0) { throw 'El ejecutable instalado no funciona' }
+          & "$dir\fast.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw 'El atajo fast no funciona' }
           if (((Get-ItemProperty HKCU:\Environment).Path -split ';') -notcontains $dir) {
             throw 'La carpeta no se agrego al PATH del usuario'
           }
@@ -237,11 +239,13 @@ jobs:
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $installed -ne "fast-folder-cli $($version.TrimStart('v'))") {
             throw "Version inesperada: $installed"
           }
+          $viaAlias = fast --version
+          if ($viaAlias -ne $installed) { throw "El atajo fast no funciona: $viaAlias" }
 
           fast-folder-cli -n search -p .
           if ($LASTEXITCODE -ne 0) { throw "La busqueda de prueba fallo (codigo $LASTEXITCODE)" }
 
           & $installer -Uninstall
-          if (Get-Command fast-folder-cli -ErrorAction SilentlyContinue) {
+          if (Get-Command fast-folder-cli, fast -ErrorAction SilentlyContinue) {
             throw 'fast-folder-cli sigue disponible tras desinstalar'
           }

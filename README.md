@@ -81,8 +81,8 @@ Requiere Windows 10 u 11 de 64 bits (x64 o ARM64).
 
 1. Descarga **[fast-folder-cli-setup.exe](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest/download/fast-folder-cli-setup.exe)**.
 2. Ábrelo y sigue los pasos: licencia → carpeta → opciones → **Instalar**.
-3. Abre una terminal nueva y escribe `fast-folder-cli --help`. En la última pantalla puedes
-   marcar **Abrir una terminal para probar fast-folder-cli** para hacerlo directamente.
+3. Abre una terminal **nueva** y escribe `fast --help`. En la última pantalla puedes marcar
+   **Abrir una terminal para probar fast-folder-cli** para hacerlo directamente.
 
 El asistente:
 
@@ -90,6 +90,8 @@ El asistente:
   `%LOCALAPPDATA%\Programs\fast-folder-cli`, **sin permisos de administrador**.
 - Agrega esa carpeta al PATH de tu usuario (opción marcada por defecto) sin alterar el resto
   de entradas.
+- Crea el atajo **`fast`** (opción marcada por defecto), para escribir `fast -n proyecto` en
+  lugar de `fast-folder-cli -n proyecto`.
 - Se registra en **Configuración → Aplicaciones → Aplicaciones instaladas**, desde donde se
   desinstala. Para actualizar, basta con ejecutar el asistente de una versión nueva.
 
@@ -110,8 +112,9 @@ Eso es todo: ya puedes usar `fast-folder-cli` en esa misma ventana. El
 
 - Detecta si tu equipo es x64 o ARM64 y descarga el ejecutable de la última versión.
 - Comprueba su suma SHA-256 antes de instalarlo.
-- Lo copia en `%LOCALAPPDATA%\Programs\fast-folder-cli` y agrega esa carpeta al PATH de tu
-  usuario, **sin permisos de administrador** y sin alterar el resto del PATH.
+- Lo copia en `%LOCALAPPDATA%\Programs\fast-folder-cli`, junto con el atajo **`fast`**, y
+  agrega esa carpeta al PATH de tu usuario, **sin permisos de administrador** y sin alterar
+  el resto del PATH.
 
 | Para... | Ejecuta |
 | --- | --- |
@@ -187,8 +190,8 @@ GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o fast-folder-cli
 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o fast-folder-cli-arm64.exe .
 ```
 
-> 💡 **Atajo:** crea un alias corto en tu perfil de PowerShell (`notepad $PROFILE`):
-> `Set-Alias ff fast-folder-cli`
+> 💡 **Atajo `fast`:** el asistente y el script de instalación lo crean automáticamente. Si
+> instalas con Go o a mano, copia `fast-folder-cli.exe` como `fast.exe` en la misma carpeta.
 
 ---
 
@@ -198,6 +201,14 @@ GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o fast-folder-cli
 fast-folder-cli -n <término> [-p <ruta>] [-a] [-o]
 fast-folder-cli <término> [opciones]
 ```
+
+Si instalaste con el asistente o el script, puedes usar el atajo **`fast`** en lugar del
+nombre completo: `fast -n proyecto`, `fast tesis -o`, etc. Tras instalar, abre una terminal
+**nueva**: las que ya estaban abiertas no ven el PATH actualizado.
+
+> Si tienes otro programa llamado `fast` (por ejemplo, el medidor de velocidad de npm
+> `fast-cli`), el que aparezca primero en el PATH tendrá prioridad; el nombre completo
+> `fast-folder-cli` siempre funciona.
 
 ### Banderas
 

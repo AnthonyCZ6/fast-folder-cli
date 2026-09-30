@@ -5,8 +5,9 @@
 .DESCRIPTION
     Descarga el ejecutable de fast-folder-cli adecuado para tu equipo (x64 o
     ARM64) desde los releases de GitHub, verifica su suma SHA-256, lo copia en
-    %LOCALAPPDATA%\Programs\fast-folder-cli y agrega esa carpeta al PATH de tu
-    usuario. No requiere permisos de administrador.
+    %LOCALAPPDATA%\Programs\fast-folder-cli (también como "fast.exe", un atajo
+    más corto) y agrega esa carpeta al PATH de tu usuario. No requiere permisos
+    de administrador.
 
     Volver a ejecutarlo actualiza fast-folder-cli a la última versión.
 
@@ -51,6 +52,8 @@ param(
 
     $repo = 'AnthonyCZ6/fast-folder-cli'
     $exe = Join-Path $InstallDir 'fast-folder-cli.exe'
+    # Atajo "fast": copia del mismo ejecutable, válida en cualquier terminal.
+    $alias = Join-Path $InstallDir 'fast.exe'
 
     function Write-Step([string]$Message) { Write-Host "  $Message" }
     function Write-Done([string]$Message) { Write-Host "  $Message" -ForegroundColor Green }
@@ -131,11 +134,12 @@ param(
         Write-Host ''
         Write-Host 'Desinstalando fast-folder-cli...' -ForegroundColor Cyan
 
-        if (Test-Path -LiteralPath $exe) {
-            Remove-Item -LiteralPath $exe -Force
-            Write-Step "Eliminado $exe"
-        } else {
-            Write-Step "No se encontró $exe"
+        if (-not (Test-Path -LiteralPath $exe)) { Write-Step "No se encontró $exe" }
+        foreach ($file in $exe, $alias) {
+            if (Test-Path -LiteralPath $file) {
+                Remove-Item -LiteralPath $file -Force
+                Write-Step "Eliminado $file"
+            }
         }
         # Por seguridad, la carpeta solo se borra si quedó vacía.
         if ((Test-Path -LiteralPath $InstallDir) -and -not (Get-ChildItem -LiteralPath $InstallDir -Force)) {
@@ -199,12 +203,14 @@ param(
         }
 
         New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-        try {
-            Copy-Item -LiteralPath $tmpExe -Destination $exe -Force
-        } catch {
-            throw "No se pudo escribir $exe. Si fast-folder-cli se está ejecutando, ciérralo y vuelve a intentarlo."
+        foreach ($file in $exe, $alias) {
+            try {
+                Copy-Item -LiteralPath $tmpExe -Destination $file -Force
+            } catch {
+                throw "No se pudo escribir $file. Si fast-folder-cli se está ejecutando, ciérralo y vuelve a intentarlo."
+            }
+            Write-Step "Copiado en $file"
         }
-        Write-Step "Copiado en $exe"
     } finally {
         Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -225,9 +231,13 @@ param(
     }
 
     $installed = Get-InstalledVersion
-    $found = Get-Command fast-folder-cli -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($found -and -not (Test-SameDir (Split-Path -Parent $found.Source))) {
-        Write-Warning "Hay otra copia de fast-folder-cli en $($found.Source) que tiene prioridad en el PATH."
+    # Avisa si otro programa con el mismo nombre tiene prioridad en el PATH
+    # (por ejemplo, el comando "fast" del paquete de npm fast-cli).
+    foreach ($name in 'fast-folder-cli', 'fast') {
+        $found = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($found -and -not (Test-SameDir (Split-Path -Parent $found.Source))) {
+            Write-Warning "El comando '$name' ejecuta $($found.Source), que tiene prioridad en el PATH. Usa fast-folder-cli con su ruta completa o quita ese otro programa."
+        }
     }
 
     Write-Host ''
@@ -240,7 +250,8 @@ param(
     }
     Write-Host ''
     Write-Host '  Pruébalo:  ' -NoNewline
-    Write-Host 'fast-folder-cli --help' -ForegroundColor Yellow
+    Write-Host 'fast --help' -ForegroundColor Yellow -NoNewline
+    Write-Host '  (atajo de fast-folder-cli --help)'
     Write-Host '  Si otra terminal no reconoce el comando, ciérrala y ábrela de nuevo.' -ForegroundColor DarkGray
     Write-Host ''
 }
