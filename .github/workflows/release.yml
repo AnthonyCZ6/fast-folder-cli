@@ -3,8 +3,8 @@
 #   git tag v1.1.0 && git push origin v1.1.0
 #
 # También puede ejecutarse a mano desde la pestaña Actions ("Run workflow"): en
-# ese caso prueba y compila, deja los ejecutables como artefacto del workflow y
-# NO publica nada.
+# ese caso prueba y compila, deja los ejecutables como artefacto del workflow,
+# prueba install.ps1 con la última versión publicada y NO publica nada.
 name: Release
 
 on:
@@ -139,3 +139,42 @@ jobs:
             --verify-tag "$kind" \
             --title "fast-folder-cli $GITHUB_REF_NAME" \
             --notes-file notes.md
+
+  install-test:
+    name: Probar instalador (${{ matrix.shell }})
+    needs: release
+    # Tras publicar, instala la versión recién publicada. En las ejecuciones
+    # manuales (sin release) prueba el instalador con la última versión.
+    if: ${{ !cancelled() && (needs.release.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        shell: [powershell, pwsh] # Windows PowerShell 5.1 y PowerShell 7
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Instalar, usar y desinstalar
+        run: |
+          # Igual que "irm ... | iex": el script se lee como texto UTF-8 y se
+          # ejecuta como scriptblock. (Solo ASCII en este bloque: Windows
+          # PowerShell 5.1 puede leer el script temporal del runner como ANSI.)
+          $installer = [scriptblock]::Create((Get-Content -Raw -Encoding UTF8 ./install.ps1))
+          $version = 'latest'
+          if ($env:GITHUB_REF_TYPE -eq 'tag') { $version = $env:GITHUB_REF_NAME }
+
+          & $installer -Version $version
+          $installed = fast-folder-cli --version
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $installed -ne "fast-folder-cli $($version.TrimStart('v'))") {
+            throw "Version inesperada: $installed"
+          }
+
+          fast-folder-cli -n search -p .
+          if ($LASTEXITCODE -ne 0) { throw "La busqueda de prueba fallo (codigo $LASTEXITCODE)" }
+
+          & $installer -Uninstall
+          if (Get-Command fast-folder-cli -ErrorAction SilentlyContinue) {
+            throw 'fast-folder-cli sigue disponible tras desinstalar'
+          }

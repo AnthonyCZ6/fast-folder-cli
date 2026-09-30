@@ -75,45 +75,78 @@ del disco y de la caché del sistema de archivos: la segunda búsqueda suele ser
 
 ## 🛠️ Instalación
 
-### Requisitos
+Requiere Windows 10 u 11 de 64 bits (x64 o ARM64).
 
-- Windows 10 u 11 (también compila en Linux y macOS, con funciones limitadas).
-- [Go 1.23 o superior](https://go.dev/dl/), solo si vas a usar `go install` o compilar el
-  código. Con winget:
+### ⚡ Con un solo comando (recomendado)
 
-  ```powershell
-  winget install GoLang.Go
-  ```
+Abre **PowerShell** y ejecuta:
 
-### Descargar el ejecutable (sin instalar Go)
+```powershell
+irm https://raw.githubusercontent.com/AnthonyCZ6/fast-folder-cli/main/install.ps1 | iex
+```
 
-Descarga el `.exe` de la [última versión](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest):
+Eso es todo: ya puedes usar `fast-folder-cli` en esa misma ventana. El
+[instalador](install.ps1):
 
-| Equipo | Archivo |
+- Detecta si tu equipo es x64 o ARM64 y descarga el ejecutable de la última versión.
+- Comprueba su suma SHA-256 antes de instalarlo.
+- Lo copia en `%LOCALAPPDATA%\Programs\fast-folder-cli` y agrega esa carpeta al PATH de tu
+  usuario, **sin permisos de administrador** y sin alterar el resto del PATH.
+
+| Para... | Ejecuta |
 | --- | --- |
-| Windows x64 (procesadores Intel o AMD, la mayoría de los equipos) | [fast-folder-cli-windows-amd64.exe](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest/download/fast-folder-cli-windows-amd64.exe) |
-| Windows ARM64 (procesadores Snapdragon, Surface Pro X) | [fast-folder-cli-windows-arm64.exe](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest/download/fast-folder-cli-windows-arm64.exe) |
+| **Actualizar** a la última versión | El mismo comando de instalación. |
+| Instalar una **versión concreta** | `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/AnthonyCZ6/fast-folder-cli/main/install.ps1))) -Version v1.0.0` |
+| **Desinstalar** | `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/AnthonyCZ6/fast-folder-cli/main/install.ps1))) -Uninstall` |
 
-Renómbralo a `fast-folder-cli.exe` y sigue los pasos de
-[Agregar al PATH](#agregar-al-path-de-windows).
+### Con Go
 
-> ⚠️ Los ejecutables no están firmados digitalmente, así que Windows SmartScreen o tu
-> antivirus pueden mostrar una advertencia la primera vez. Para comprobar que el archivo es
-> el original, compara `Get-FileHash .\fast-folder-cli.exe` con el valor de `checksums.txt`
-> publicado en la versión; después puedes quitar la marca de descarga con
-> `Unblock-File .\fast-folder-cli.exe`.
-
-### Instalación rápida con `go install`
+Si tienes [Go 1.23 o superior](https://go.dev/dl/) (`winget install GoLang.Go`):
 
 ```powershell
 go install github.com/AnthonyCZ6/fast-folder-cli@latest
 ```
 
-Go descarga, compila e instala el ejecutable en `%USERPROFILE%\go\bin`, carpeta que el
-instalador de Go ya agrega al PATH: no hace falta clonar el repositorio ni el paso
-[Agregar al PATH](#agregar-al-path-de-windows).
+El ejecutable se instala en `%USERPROFILE%\go\bin`, carpeta que el instalador de Go ya
+agrega al PATH.
 
-### Compilar el ejecutable `.exe`
+### Descarga manual
+
+1. Descarga el `.exe` de tu equipo desde la
+   [última versión](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest):
+
+   | Equipo | Archivo |
+   | --- | --- |
+   | Windows x64 (procesadores Intel o AMD, la mayoría de los equipos) | [fast-folder-cli-windows-amd64.exe](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest/download/fast-folder-cli-windows-amd64.exe) |
+   | Windows ARM64 (procesadores Snapdragon, Surface Pro X) | [fast-folder-cli-windows-arm64.exe](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest/download/fast-folder-cli-windows-arm64.exe) |
+
+2. Renómbralo a `fast-folder-cli.exe` y guárdalo en una carpeta permanente, por ejemplo
+   `%LOCALAPPDATA%\Programs\fast-folder-cli`.
+3. Agrega esa carpeta al PATH (siguiente apartado).
+
+> ⚠️ Los ejecutables no están firmados digitalmente, así que Windows SmartScreen o tu
+> antivirus pueden mostrar una advertencia la primera vez. Para comprobar que el archivo es
+> el original, compara `Get-FileHash .\fast-folder-cli.exe` con el valor de `checksums.txt`
+> publicado en la versión. El instalador de un solo comando hace esta comprobación por ti.
+
+#### Agregar al PATH de Windows
+
+1. Pulsa <kbd>Win</kbd> + <kbd>R</kbd>, escribe `SystemPropertiesAdvanced` y pulsa
+   <kbd>Enter</kbd>.
+2. Haz clic en **Variables de entorno...**.
+3. En **Variables de usuario**, selecciona `Path` → **Editar** → **Nuevo** y pega la ruta
+   de la carpeta.
+4. Acepta todas las ventanas y abre una terminal nueva (el PATH solo se lee al iniciarla).
+
+Comprueba que funciona con:
+
+```powershell
+fast-folder-cli --version
+```
+
+### Compilar desde el código
+
+Requiere [Go 1.23 o superior](https://go.dev/dl/):
 
 ```powershell
 git clone https://github.com/AnthonyCZ6/fast-folder-cli.git
@@ -127,53 +160,15 @@ go build -trimpath -ldflags "-s -w -X main.version=1.0.0" -o fast-folder-cli.exe
 | `-ldflags "-s -w"` | Quita la información de depuración (ejecutable más pequeño). |
 | `-X main.version=1.0.0` | Define la versión que muestra `--version`. |
 
-**Compilación cruzada** desde Linux o macOS (o para equipos Windows ARM):
+**Compilación cruzada** desde Linux o macOS (también compila allí, con funciones limitadas):
 
 ```bash
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o fast-folder-cli.exe .
 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o fast-folder-cli-arm64.exe .
 ```
 
-### Agregar al PATH de Windows
-
-Así podrás ejecutar `fast-folder-cli` desde cualquier carpeta y cualquier terminal.
-
-#### Opción A — PowerShell (recomendada, no requiere administrador)
-
-Desde la carpeta donde está `fast-folder-cli.exe` (descargado o compilado):
-
-```powershell
-$dest = "$env:LOCALAPPDATA\Programs\fast-folder-cli"
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Copy-Item .\fast-folder-cli.exe $dest -Force
-
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if (($userPath -split ";") -notcontains $dest) {
-    [Environment]::SetEnvironmentVariable("Path", "$userPath;$dest", "User")
-}
-```
-
-#### Opción B — Interfaz gráfica
-
-1. Copia `fast-folder-cli.exe` a una carpeta permanente, por ejemplo
-   `C:\Users\<usuario>\AppData\Local\Programs\fast-folder-cli`.
-2. Pulsa <kbd>Win</kbd> + <kbd>R</kbd>, escribe `SystemPropertiesAdvanced` y pulsa
-   <kbd>Enter</kbd>.
-3. Haz clic en **Variables de entorno...**.
-4. En **Variables de usuario**, selecciona `Path` → **Editar** → **Nuevo** y pega la ruta
-   de la carpeta.
-5. Acepta todas las ventanas.
-
-#### Verificar la instalación
-
-Cierra y vuelve a abrir la terminal (el PATH solo se lee al iniciarla) y ejecuta:
-
-```powershell
-fast-folder-cli --version
-```
-
-> 💡 **Atajo:** renombra el ejecutable a `ff.exe` o crea un alias en tu perfil de PowerShell
-> (`notepad $PROFILE`): `Set-Alias ff fast-folder-cli`
+> 💡 **Atajo:** crea un alias corto en tu perfil de PowerShell (`notepad $PROFILE`):
+> `Set-Alias ff fast-folder-cli`
 
 ---
 
@@ -308,6 +303,7 @@ fast-folder-cli/
 ├── .github/
 │   ├── workflows/release.yml      # Pruebas, compilación y publicación de versiones
 │   └── scripts/release-notes.sh   # Notas de versión a partir de los commits
+├── install.ps1                    # Instalador de un solo comando para Windows
 ├── main.go                        # Punto de entrada
 ├── internal/
 │   ├── cli/                       # Banderas, formato de salida y colores de consola
@@ -346,10 +342,14 @@ El workflow entonces:
    versión tomada de la etiqueta, y genera `checksums.txt` (SHA-256).
 3. Crea el release en GitHub con los ejecutables y notas generadas a partir de los mensajes de
    commit, agrupados por tipo (`feat`, `fix`, `docs`...).
+4. Instala la versión recién publicada con [`install.ps1`](install.ps1) en un Windows limpio
+   (Windows PowerShell 5.1 y PowerShell 7), la usa y la desinstala, para garantizar que el
+   comando de instalación funciona.
 
 Las etiquetas con sufijo (`v1.2.0-rc.1`) se publican como *prerelease*. Para comprobar que
 todo compila sin publicar nada, ejecuta el workflow a mano desde la pestaña **Actions**
-(**Release → Run workflow**): los ejecutables quedarán disponibles como artefacto.
+(**Release → Run workflow**): los ejecutables quedarán disponibles como artefacto y el
+instalador se probará con la última versión publicada.
 
 ## 🤝 Contribuir
 

@@ -9,6 +9,8 @@ set -euo pipefail
 tag="$1"
 repo_url="$2"
 module=$(awk '/^module /{print $2}' go.mod)
+# https://github.com/usuario/repo -> https://raw.githubusercontent.com/usuario/repo
+raw_url="https://raw.githubusercontent.com/${repo_url#https://github.com/}"
 
 if prev=$(git describe --tags --abbrev=0 "$tag^" 2>/dev/null); then
   range="$prev..$tag"
@@ -53,27 +55,42 @@ section "Otros cambios" -v -e "$(type_re "$types")" -e '^$'
 
 sed -e "s|{{TAG}}|$tag|g" \
   -e "s|{{REPO_URL}}|$repo_url|g" \
+  -e "s|{{RAW_URL}}|$raw_url|g" \
   -e "s|{{MODULE}}|$module|g" \
   -e "s|{{CHANGES_URL}}|$changes_url|g" <<'EOF'
-## 📥 Descarga
+## 📥 Instalación
+
+Abre PowerShell y ejecuta (instala o actualiza, sin permisos de administrador):
+
+```powershell
+irm {{RAW_URL}}/main/install.ps1 | iex
+```
+
+El instalador detecta si tu equipo es x64 o ARM64, verifica la suma SHA-256 y agrega
+`fast-folder-cli` al PATH. Para instalar exactamente esta versión:
+
+```powershell
+& ([scriptblock]::Create((irm {{RAW_URL}}/main/install.ps1))) -Version {{TAG}}
+```
+
+¿Tienes Go 1.23 o superior? `go install {{MODULE}}@{{TAG}}`
+
+<details>
+<summary>Descarga manual</summary>
 
 | Equipo | Archivo |
 | --- | --- |
 | Windows x64 (Intel o AMD, la mayoría de los equipos) | [fast-folder-cli-windows-amd64.exe]({{REPO_URL}}/releases/download/{{TAG}}/fast-folder-cli-windows-amd64.exe) |
 | Windows ARM64 (Snapdragon, Surface Pro X) | [fast-folder-cli-windows-arm64.exe]({{REPO_URL}}/releases/download/{{TAG}}/fast-folder-cli-windows-arm64.exe) |
 
-1. Descarga el archivo de tu equipo y renómbralo a `fast-folder-cli.exe`.
-2. Agrégalo al PATH siguiendo [las instrucciones del README]({{REPO_URL}}#agregar-al-path-de-windows).
+Renómbralo a `fast-folder-cli.exe` y agrégalo al PATH siguiendo
+[las instrucciones del README]({{REPO_URL}}#agregar-al-path-de-windows).
 
-¿Tienes Go 1.23 o superior? Instálalo en un solo paso:
-
-```powershell
-go install {{MODULE}}@{{TAG}}
-```
+</details>
 
 ## 🔒 Verificación
 
-Los ejecutables no están firmados digitalmente, así que Windows SmartScreen o tu antivirus pueden mostrar una advertencia la primera vez. Comprueba que el archivo es el original comparando su SHA-256 con `checksums.txt`:
+Los ejecutables no están firmados digitalmente, así que Windows SmartScreen o tu antivirus pueden mostrar una advertencia la primera vez. El instalador comprueba la suma SHA-256 automáticamente; si descargas el archivo a mano, compáralo con `checksums.txt`:
 
 ```powershell
 Get-FileHash .\fast-folder-cli-windows-amd64.exe
