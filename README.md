@@ -2,9 +2,8 @@
 
 [![Release](https://img.shields.io/github/v/release/AnthonyCZ6/fast-folder-cli?sort=semver)](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest)
 [![Workflow de release](https://github.com/AnthonyCZ6/fast-folder-cli/actions/workflows/release.yml/badge.svg)](https://github.com/AnthonyCZ6/fast-folder-cli/actions/workflows/release.yml)
-![Go](https://img.shields.io/badge/Go-1.23%2B-00ADD8?logo=go&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows&logoColor=white)
-![Dependencias](https://img.shields.io/badge/dependencias-0-brightgreen)
 ![Licencia](https://img.shields.io/badge/licencia-MIT-yellow)
 
 **Encuentra cualquier carpeta de tu PC en segundos, directamente desde la terminal.**
@@ -55,7 +54,8 @@ experiencia frustrante:
 | 🔁 **Seguro con enlaces** | Las uniones (*junctions*) y enlaces simbólicos se reportan pero no se recorren, evitando ciclos infinitos. |
 | 👻 **Ocultas y de sistema** | Se ignoran por defecto (más rápido y menos ruido); `--all` las incluye. |
 | 📂 **Integración con el Explorador** | `--open` abre la primera coincidencia en cuanto se encuentra. |
-| 📦 **Sin dependencias** | Solo la biblioteca estándar de Go: un único `.exe` de ~2.3 MB. |
+| ⌨️ **Modo interactivo** | Escribe `fast` sin argumentos y busca, elige ubicación y abre carpetas usando solo las flechas. |
+| 📦 **Un solo ejecutable** | Sin instalar nada más: un único `.exe` para x64 o ARM64. |
 
 ## 📊 Rendimiento
 
@@ -124,7 +124,7 @@ Eso es todo: ya puedes usar `fast-folder-cli` en esa misma ventana. El
 
 ### Con Go
 
-Si tienes [Go 1.23 o superior](https://go.dev/dl/) (`winget install GoLang.Go`):
+Si tienes [Go 1.26 o superior](https://go.dev/dl/) (`winget install GoLang.Go`):
 
 ```powershell
 go install github.com/AnthonyCZ6/fast-folder-cli@latest
@@ -169,7 +169,7 @@ fast-folder-cli --version
 
 ### Compilar desde el código
 
-Requiere [Go 1.23 o superior](https://go.dev/dl/):
+Requiere [Go 1.26 o superior](https://go.dev/dl/):
 
 ```powershell
 git clone https://github.com/AnthonyCZ6/fast-folder-cli.git
@@ -197,14 +197,63 @@ GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o fast-folder-cli
 
 ## 🚀 Uso
 
+Si instalaste con el asistente o el script, puedes usar el atajo **`fast`** en lugar del
+nombre completo `fast-folder-cli`. Tras instalar, abre una terminal **nueva**: las que ya
+estaban abiertas no ven el PATH actualizado.
+
+### ⌨️ Modo interactivo (con las flechas)
+
+*Disponible desde la versión 1.1.0.* Escribe solo:
+
+```powershell
+fast
+```
+
+y se abre una pantalla de búsqueda que se maneja sin escribir comandos:
+
+```text
+ fast-folder-cli   v1.1.0
+
+ ► Buscar     proyecto
+   Ubicación  ◄ Documentos ►  C:\Users\usuario\Documents
+   Ocultas      No            carpetas ocultas y de sistema
+
+ ↑↓ moverse   ←→ cambiar opción   Enter buscar   Esc salir
+```
+
+1. Escribe el nombre (o parte del nombre) de la carpeta.
+2. Con **↓** baja a **Ubicación** y elige dónde buscar con **← →**: tu perfil, Escritorio,
+   Documentos, Descargas, la carpeta actual, AppData, ProgramData o cualquier unidad (C:, D:...).
+3. Con **↓** baja a **Ocultas** y actívalas con **← →** si también quieres buscar en
+   carpetas ocultas y de sistema.
+4. Pulsa **Enter**. Los resultados aparecen conforme se encuentran:
+
+```text
+ fast-folder-cli   "proyecto" en C:\Users\usuario\Documents
+
+ ► Proyecto-Final          C:\Users\usuario\Documents
+   mi-proyecto             C:\Users\usuario\Documents\escuela
+
+ 2 carpetas encontradas · 1,284 analizadas · 1/2 · 38 ms
+ ↑↓ moverse   Enter abrir en el Explorador   ← nueva búsqueda   Esc salir
+```
+
+| Tecla | En la búsqueda | En los resultados |
+| --- | --- | --- |
+| <kbd>↑</kbd> <kbd>↓</kbd> | Cambiar de campo | Moverse por la lista (<kbd>RePág</kbd> <kbd>AvPág</kbd> <kbd>Inicio</kbd> <kbd>Fin</kbd> para saltar) |
+| <kbd>←</kbd> <kbd>→</kbd> | Cambiar la ubicación o las ocultas | <kbd>→</kbd> abre la carpeta · <kbd>←</kbd> vuelve a la búsqueda |
+| <kbd>Enter</kbd> | Buscar | Abrir la carpeta en el Explorador |
+| <kbd>Esc</kbd> | Salir | Salir |
+
+### Con comandos (para scripts)
+
 ```text
 fast-folder-cli -n <término> [-p <ruta>] [-a] [-o]
 fast-folder-cli <término> [opciones]
 ```
 
-Si instalaste con el asistente o el script, puedes usar el atajo **`fast`** en lugar del
-nombre completo: `fast -n proyecto`, `fast tesis -o`, etc. Tras instalar, abre una terminal
-**nueva**: las que ya estaban abiertas no ven el PATH actualizado.
+Con argumentos, la herramienta funciona como un comando normal: imprime los resultados y
+termina, así que se puede usar en scripts y redirigir su salida.
 
 > Si tienes otro programa llamado `fast` (por ejemplo, el medidor de velocidad de npm
 > `fast-cli`), el que aparezca primero en el PATH tendrá prioridad; el nombre completo
@@ -339,9 +388,11 @@ fast-folder-cli/
 ├── main.go                        # Punto de entrada
 ├── internal/
 │   ├── cli/                       # Banderas, formato de salida y colores de consola
+│   ├── tui/                       # Modo interactivo con flechas (Bubble Tea)
 │   ├── search/                    # Motor de búsqueda concurrente y coincidencia de nombres
 │   ├── pathutil/                  # Resolución de %VARIABLES%, ~ y unidades
-│   └── explorer/                  # Apertura de carpetas en el Explorador de Windows
+│   ├── explorer/                  # Apertura de carpetas en el Explorador de Windows
+│   └── humanize/                  # Formato de números ("52,341") y plurales
 ├── go.mod
 ├── LICENSE
 └── README.md
@@ -376,7 +427,7 @@ git push origin v1.1.0
 
 El workflow entonces:
 
-1. Ejecuta las pruebas en Windows (con Go 1.23 y con la versión estable más reciente) y en
+1. Ejecuta las pruebas en Windows (con Go 1.26 y con la versión estable más reciente) y en
    Linux con el detector de condiciones de carrera (`-race`).
 2. Compila `fast-folder-cli-windows-amd64.exe` y `fast-folder-cli-windows-arm64.exe` con la
    versión tomada de la etiqueta.

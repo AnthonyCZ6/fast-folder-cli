@@ -30,7 +30,7 @@ jobs:
         include:
           # Versión mínima declarada en go.mod.
           - os: windows-latest
-            go: "1.23"
+            go: "1.26"
           - os: windows-latest
             go: stable
           # El detector de condiciones de carrera requiere cgo (gcc), incluido
@@ -44,7 +44,6 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
-          cache: false # sin dependencias externas: no hay go.sum que cachear
 
       - name: Comprobar formato (gofmt)
         if: runner.os == 'Linux'
@@ -73,7 +72,6 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
-          cache: false
 
       - name: Compilar para Windows (amd64 y arm64)
         env:

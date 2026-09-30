@@ -13,9 +13,12 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/explorer"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/pathutil"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/tui"
 )
 
 // Códigos de salida (compatibles con la convención de grep).
@@ -41,6 +44,16 @@ type config struct {
 // y devuelve el código de salida del proceso.
 func Run(args []string, stdout, stderr io.Writer, version string) int {
 	start := time.Now()
+
+	// Sin argumentos y en una terminal se abre el modo interactivo, que se
+	// maneja con las flechas. Si la salida está redirigida se muestra la ayuda.
+	if len(args) == 0 && isInteractive(stdout) {
+		if err := tui.Run(version); err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return exitUsage
+		}
+		return exitFound
+	}
 
 	cfg, err := parseArgs(args)
 	switch {
@@ -195,6 +208,13 @@ func translateFlagError(err error) error {
 	return errors.New("argumentos inválidos: " + msg)
 }
 
+// isInteractive indica si la entrada y la salida son una terminal real, en la
+// que se puede usar el modo interactivo.
+func isInteractive(stdout io.Writer) bool {
+	f, ok := stdout.(*os.File)
+	return ok && term.IsTerminal(int(f.Fd())) && term.IsTerminal(int(os.Stdin.Fd()))
+}
+
 func usageError(w io.Writer, err error) int {
 	fmt.Fprintf(w, "error: %v\n", err)
 	fmt.Fprintln(w, "Ejecuta 'fast-folder-cli --help' para ver las opciones disponibles.")
@@ -205,8 +225,11 @@ func printUsage(w io.Writer) {
 	io.WriteString(w, `fast-folder-cli — búsqueda ultrarrápida de carpetas para Windows
 
 Uso:
+  fast-folder-cli                        modo interactivo (se maneja con las flechas)
   fast-folder-cli -n <término> [-p <ruta>] [-a] [-o]
   fast-folder-cli <término> [opciones]
+
+Si lo instalaste con el asistente o el script, también puedes escribir "fast".
 
 Opciones:
   -n, --name <término>  Término o patrón a buscar (sin distinguir mayúsculas).

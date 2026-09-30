@@ -102,12 +102,3 @@ func TestRunExitCodes(t *testing.T) {
 		}
 	}
 }
-
-func TestFormatInt(t *testing.T) {
-	tests := map[int64]string{0: "0", 7: "7", 999: "999", 1000: "1,000", 52341: "52,341", 1234567: "1,234,567", -4200: "-4,200"}
-	for in, want := range tests {
-		if got := formatInt(in); got != want {
-			t.Errorf("formatInt(%d) = %q, want %q", in, got, want)
-		}
-	}
-}

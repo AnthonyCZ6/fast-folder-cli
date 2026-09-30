@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/humanize"
 )
 
 // Secuencias ANSI de color.
@@ -88,12 +90,12 @@ func (p *printer) summary(s summary) {
 	if s.found == 0 {
 		p.field("Resultados", p.paint("sin coincidencias", ansiYellow))
 	} else {
-		p.field("Resultados", p.paint(plural(s.found, "carpeta encontrada", "carpetas encontradas"), ansiBold, ansiGreen))
+		p.field("Resultados", p.paint(humanize.Count(s.found, "carpeta encontrada", "carpetas encontradas"), ansiBold, ansiGreen))
 	}
 
-	scanned := plural(s.scanned, "carpeta", "carpetas")
+	scanned := humanize.Count(s.scanned, "carpeta", "carpetas")
 	if s.denied > 0 {
-		scanned += p.paint(" ("+formatInt(s.denied)+" sin acceso, omitidas)", ansiDim)
+		scanned += p.paint(" ("+humanize.Int(s.denied)+" sin acceso, omitidas)", ansiDim)
 	}
 	p.field("Analizadas", scanned)
 
@@ -103,35 +105,11 @@ func (p *printer) summary(s summary) {
 	if s.interrupted {
 		p.field("Estado", p.paint("búsqueda interrumpida (resultados parciales)", ansiYellow))
 	}
-	p.field("Tiempo", p.paint(formatInt(s.elapsed.Milliseconds())+" ms", ansiBold, ansiCyan))
+	p.field("Tiempo", p.paint(humanize.Int(s.elapsed.Milliseconds())+" ms", ansiBold, ansiCyan))
 }
 
 func (p *printer) field(label, value string) {
 	fmt.Fprintf(p.w, "%s %s\n", p.paint(fmt.Sprintf("%-11s:", label), ansiDim), value)
-}
-
-// plural formatea n junto al sustantivo en singular o plural.
-func plural(n int64, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-	return formatInt(n) + " " + many
-}
-
-// formatInt formatea un entero con separador de miles: 52341 -> "52,341".
-func formatInt(n int64) string {
-	if n < 0 {
-		return "-" + formatInt(-n)
-	}
-	s := strconv.FormatInt(n, 10)
-	var b strings.Builder
-	for i, r := range s {
-		if i > 0 && (len(s)-i)%3 == 0 {
-			b.WriteByte(',')
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }
 
 // supportsColor indica si w es una consola capaz de mostrar colores ANSI.

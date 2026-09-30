@@ -80,7 +80,7 @@ El script detecta si tu equipo es x64 o ARM64, verifica la suma SHA-256 y agrega
 & ([scriptblock]::Create((irm {{RAW_URL}}/main/install.ps1))) -Version {{TAG}}
 ```
 
-¿Tienes Go 1.23 o superior? `go install {{MODULE}}@{{TAG}}`
+¿Tienes Go 1.26 o superior? `go install {{MODULE}}@{{TAG}}`
 
 <details>
 <summary>Descarga manual</summary>

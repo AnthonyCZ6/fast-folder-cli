@@ -63,13 +63,13 @@ SolidCompression=yes
 Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Messages]
-FinishedLabelNoIcons=El asistente terminó de instalar [name] en su equipo.%n%nPara usarlo, abra una terminal nueva (PowerShell o Símbolo del sistema) y escriba:%n%n    fast --help%n%no, con el nombre completo, fast-folder-cli --help
+FinishedLabelNoIcons=El asistente terminó de instalar [name] en su equipo.%n%nPara usarlo, abra una terminal nueva (PowerShell o Símbolo del sistema) y escriba:%n%n    fast%n%nSe abrirá una búsqueda que se maneja con las flechas del teclado.
 
 [CustomMessages]
 Options=Opciones:
 AddToPath=Agregar fast-folder-cli al PATH (recomendado: permite usarlo desde cualquier terminal)
 FastAlias=Crear el atajo "fast" (para escribir fast en lugar de fast-folder-cli)
-OpenTerminal=Abrir una terminal para probar fast-folder-cli
+OpenTerminal=Abrir fast-folder-cli ahora (búsqueda con las flechas)
 
 [Tasks]
 Name: "addtopath"; Description: "{cm:AddToPath}"; GroupDescription: "{cm:Options}"
@@ -92,8 +92,9 @@ Type: files; Name: "{app}\fast.exe"; Tasks: not fastalias
 
 [Run]
 ; Abre cmd con la carpeta ya en el PATH de esa ventana (los procesos lanzados
-; por el instalador heredan su entorno, que aún no incluye el PATH nuevo).
-Filename: "{cmd}"; Parameters: "/k ""set ""PATH={app};%PATH%"" && fast-folder-cli --help"""; Description: "{cm:OpenTerminal}"; Flags: postinstall nowait skipifsilent
+; por el instalador heredan su entorno, que aún no incluye el PATH nuevo) y
+; arranca el modo interactivo. Al salir con Esc, la ventana sigue abierta.
+Filename: "{cmd}"; Parameters: "/k ""set ""PATH={app};%PATH%"" && fast-folder-cli"""; Description: "{cm:OpenTerminal}"; Flags: postinstall nowait skipifsilent
 
 [Code]
 const
