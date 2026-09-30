@@ -77,7 +77,27 @@ del disco y de la caché del sistema de archivos: la segunda búsqueda suele ser
 
 Requiere Windows 10 u 11 de 64 bits (x64 o ARM64).
 
-### ⚡ Con un solo comando (recomendado)
+### 🧙 Asistente de instalación (recomendado)
+
+1. Descarga **[fast-folder-cli-setup.exe](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest/download/fast-folder-cli-setup.exe)**.
+2. Ábrelo y sigue los pasos: licencia → carpeta → opciones → **Instalar**.
+3. Abre una terminal nueva y escribe `fast-folder-cli --help`. En la última pantalla puedes
+   marcar **Abrir una terminal para probar fast-folder-cli** para hacerlo directamente.
+
+El asistente:
+
+- Instala la versión adecuada para tu equipo (x64 o ARM64) en
+  `%LOCALAPPDATA%\Programs\fast-folder-cli`, **sin permisos de administrador**.
+- Agrega esa carpeta al PATH de tu usuario (opción marcada por defecto) sin alterar el resto
+  de entradas.
+- Se registra en **Configuración → Aplicaciones → Aplicaciones instaladas**, desde donde se
+  desinstala. Para actualizar, basta con ejecutar el asistente de una versión nueva.
+
+> ⚠️ El asistente no está firmado digitalmente, así que la primera vez Windows SmartScreen
+> puede mostrar **"Windows protegió su PC"**: pulsa **Más información → Ejecutar de todas
+> formas**.
+
+### ⚡ Desde la terminal, con un solo comando
 
 Abre **PowerShell** y ejecuta:
 
@@ -86,7 +106,7 @@ irm https://raw.githubusercontent.com/AnthonyCZ6/fast-folder-cli/main/install.ps
 ```
 
 Eso es todo: ya puedes usar `fast-folder-cli` en esa misma ventana. El
-[instalador](install.ps1):
+[script](install.ps1):
 
 - Detecta si tu equipo es x64 o ARM64 y descarga el ejecutable de la última versión.
 - Comprueba su suma SHA-256 antes de instalarlo.
@@ -303,6 +323,7 @@ fast-folder-cli/
 ├── .github/
 │   ├── workflows/release.yml      # Pruebas, compilación y publicación de versiones
 │   └── scripts/release-notes.sh   # Notas de versión a partir de los commits
+├── installer/fast-folder-cli.iss  # Asistente de instalación (Inno Setup)
 ├── install.ps1                    # Instalador de un solo comando para Windows
 ├── main.go                        # Punto de entrada
 ├── internal/
@@ -323,6 +344,14 @@ go vet ./...      # análisis estático
 gofmt -l .        # comprobar formato
 ```
 
+Para generar el asistente de instalación localmente, instala
+[Inno Setup](https://jrsoftware.org/isdl.php) (6.7 o superior), deja los dos ejecutables en
+`dist\` y ejecuta:
+
+```powershell
+ISCC.exe /DAppVersion=1.0.0 installer\fast-folder-cli.iss   # genera dist\fast-folder-cli-setup.exe
+```
+
 ### Publicar una nueva versión
 
 Las versiones se publican automáticamente con GitHub Actions
@@ -339,10 +368,13 @@ El workflow entonces:
 1. Ejecuta las pruebas en Windows (con Go 1.23 y con la versión estable más reciente) y en
    Linux con el detector de condiciones de carrera (`-race`).
 2. Compila `fast-folder-cli-windows-amd64.exe` y `fast-folder-cli-windows-arm64.exe` con la
-   versión tomada de la etiqueta, y genera `checksums.txt` (SHA-256).
-3. Crea el release en GitHub con los ejecutables y notas generadas a partir de los mensajes de
-   commit, agrupados por tipo (`feat`, `fix`, `docs`...).
-4. Instala la versión recién publicada con [`install.ps1`](install.ps1) en un Windows limpio
+   versión tomada de la etiqueta.
+3. Genera el asistente `fast-folder-cli-setup.exe` con [Inno Setup](https://jrsoftware.org/isinfo.php)
+   (versión y SHA-256 fijados en el workflow) y comprueba en Windows que se instala y
+   desinstala correctamente en modo silencioso.
+4. Crea el release en GitHub con los tres ejecutables, `checksums.txt` (SHA-256) y notas
+   generadas a partir de los mensajes de commit, agrupados por tipo (`feat`, `fix`, `docs`...).
+5. Instala la versión recién publicada con [`install.ps1`](install.ps1) en un Windows limpio
    (Windows PowerShell 5.1 y PowerShell 7), la usa y la desinstala, para garantizar que el
    comando de instalación funciona.
 

@@ -60,13 +60,19 @@ sed -e "s|{{TAG}}|$tag|g" \
   -e "s|{{CHANGES_URL}}|$changes_url|g" <<'EOF'
 ## 📥 Instalación
 
-Abre PowerShell y ejecuta (instala o actualiza, sin permisos de administrador):
+**Asistente de instalación:** descarga
+[fast-folder-cli-setup.exe]({{REPO_URL}}/releases/download/{{TAG}}/fast-folder-cli-setup.exe),
+ábrelo y sigue los pasos. No requiere permisos de administrador, instala la versión
+adecuada para tu equipo (x64 o ARM64), agrega `fast-folder-cli` al PATH y se puede
+desinstalar desde **Configuración → Aplicaciones**.
+
+**Desde la terminal:** abre PowerShell y ejecuta (instala o actualiza):
 
 ```powershell
 irm {{RAW_URL}}/main/install.ps1 | iex
 ```
 
-El instalador detecta si tu equipo es x64 o ARM64, verifica la suma SHA-256 y agrega
+El script detecta si tu equipo es x64 o ARM64, verifica la suma SHA-256 y agrega
 `fast-folder-cli` al PATH. Para instalar exactamente esta versión:
 
 ```powershell
@@ -90,7 +96,7 @@ Renómbralo a `fast-folder-cli.exe` y agrégalo al PATH siguiendo
 
 ## 🔒 Verificación
 
-Los ejecutables no están firmados digitalmente, así que Windows SmartScreen o tu antivirus pueden mostrar una advertencia la primera vez. El instalador comprueba la suma SHA-256 automáticamente; si descargas el archivo a mano, compáralo con `checksums.txt`:
+Los ejecutables no están firmados digitalmente, así que Windows SmartScreen puede mostrar "Windows protegió su PC" al abrir el asistente: pulsa **Más información → Ejecutar de todas formas**. El script de PowerShell comprueba la suma SHA-256 automáticamente; si descargas un archivo a mano, compáralo con `checksums.txt`:
 
 ```powershell
 Get-FileHash .\fast-folder-cli-windows-amd64.exe

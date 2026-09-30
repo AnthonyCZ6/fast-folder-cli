@@ -3,8 +3,9 @@
 #   git tag v1.1.0 && git push origin v1.1.0
 #
 # También puede ejecutarse a mano desde la pestaña Actions ("Run workflow"): en
-# ese caso prueba y compila, deja los ejecutables como artefacto del workflow,
-# prueba install.ps1 con la última versión publicada y NO publica nada.
+# ese caso prueba y compila, deja los ejecutables y el asistente de instalación
+# como artefactos del workflow, prueba install.ps1 con la última versión
+# publicada y NO publica nada.
 name: Release
 
 on:
@@ -92,19 +93,79 @@ jobs:
               -o "dist/fast-folder-cli-windows-$arch.exe" .
           done
 
-          cd dist
-          sha256sum *.exe > checksums.txt
-          cat checksums.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binaries
+          path: dist/
+          if-no-files-found: error
+
+  installer:
+    name: Crear asistente de instalación
+    needs: build
+    runs-on: windows-latest
+    env:
+      # Versión fija de Inno Setup y su SHA-256, para compilaciones reproducibles
+      # que no dependan de lo que traiga preinstalado el runner.
+      INNO_VERSION: 7.1.0
+      INNO_SHA256: 0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: binaries
+          path: dist
+
+      - name: Instalar Inno Setup
+        run: |
+          $tag = 'is-' + $env:INNO_VERSION.Replace('.', '_')
+          $exe = "$env:RUNNER_TEMP\innosetup.exe"
+          Invoke-WebRequest "https://github.com/jrsoftware/issrc/releases/download/$tag/innosetup-$env:INNO_VERSION-x64.exe" -OutFile $exe
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+          if ($hash -ne $env:INNO_SHA256) { throw "SHA-256 inesperado para Inno Setup: $hash" }
+          Start-Process $exe -Wait -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /CURRENTUSER /PORTABLE=1 /NOICONS /DIR=`"$env:RUNNER_TEMP\inno`""
+          if (-not (Test-Path "$env:RUNNER_TEMP\inno\ISCC.exe")) { throw 'No se pudo instalar Inno Setup' }
+
+      - name: Compilar el asistente
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          } else {
+            $version = "0.0.0-dev.$($env:GITHUB_SHA.Substring(0, 7))"
+          }
+          & "$env:RUNNER_TEMP\inno\ISCC.exe" "/DAppVersion=$version" installer\fast-folder-cli.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC termino con codigo $LASTEXITCODE" }
+
+      - name: Probar instalación y desinstalación silenciosas
+        run: |
+          $dir = "$env:LOCALAPPDATA\Programs\fast-folder-cli"
+          $p = Start-Process dist\fast-folder-cli-setup.exe -Wait -PassThru -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=setup.log'
+          if ($p.ExitCode -ne 0) { Get-Content setup.log; throw "El asistente termino con codigo $($p.ExitCode)" }
+
+          & "$dir\fast-folder-cli.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw 'El ejecutable instalado no funciona' }
+          if (((Get-ItemProperty HKCU:\Environment).Path -split ';') -notcontains $dir) {
+            throw 'La carpeta no se agrego al PATH del usuario'
+          }
+
+          # El desinstalador se copia a %TEMP% y continua en segundo plano.
+          Start-Process "$dir\unins000.exe" -Wait -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
+          for ($i = 0; $i -lt 60 -and (Test-Path $dir); $i++) { Start-Sleep -Milliseconds 500 }
+          if (Test-Path $dir) { throw 'La desinstalacion no elimino la carpeta' }
+          if (((Get-ItemProperty HKCU:\Environment).Path -split ';') -contains $dir) {
+            throw 'La carpeta sigue en el PATH tras desinstalar'
+          }
+          Write-Host 'Instalacion y desinstalacion correctas.'
 
       - uses: actions/upload-artifact@v7
         with:
-          name: release-binaries
-          path: dist/
+          name: installer
+          path: dist/fast-folder-cli-setup.exe
           if-no-files-found: error
 
   release:
     name: Publicar release
-    needs: build
+    needs: [build, installer]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
@@ -116,8 +177,14 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          name: release-binaries
           path: dist
+          merge-multiple: true # ejecutables y asistente en la misma carpeta
+
+      - name: Generar sumas SHA-256
+        working-directory: dist
+        run: |
+          sha256sum *.exe > checksums.txt
+          cat checksums.txt
 
       - name: Generar notas de la versión
         run: |
