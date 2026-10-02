@@ -1,10 +1,6 @@
-// Package search implementa el recorrido concurrente de directorios.
-//
-// El recorrido usa un número acotado de goroutines: cada subdirectorio se
-// entrega a una goroutine nueva si hay un "slot" libre en el semáforo; si no,
-// la goroutine actual lo procesa en línea (en profundidad). Así nunca hay más
-// de Workers goroutines activas, no puede producirse un interbloqueo y los
-// núcleos se mantienen ocupados mientras quede trabajo pendiente.
+// Package search implementa el recorrido concurrente de directorios: la
+// búsqueda de carpetas (Start) y el cálculo de su tamaño (Size). Ambos
+// reparten el trabajo entre un número acotado de goroutines (ver pool).
 package search
 
 import (
@@ -12,8 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -77,27 +71,18 @@ func DefaultWorkers() int {
 // emite cada carpeta encontrada. El canal se cierra al terminar el recorrido o
 // al cancelarse ctx.
 func Start(ctx context.Context, opts Options) (<-chan Result, *Stats) {
-	workers := opts.Workers
-	if workers <= 0 {
-		workers = DefaultWorkers()
-	}
-
 	out := make(chan Result, 64)
 	w := &walker{
 		ctx:   ctx,
 		opts:  opts,
-		sem:   make(chan struct{}, workers),
+		pool:  newPool(opts.Workers),
 		out:   out,
 		stats: &Stats{},
 	}
 
-	w.wg.Add(1)
 	go func() {
-		defer w.wg.Done()
 		w.walk(opts.Root, true)
-	}()
-	go func() {
-		w.wg.Wait()
+		w.pool.wait()
 		close(out)
 	}()
 
@@ -107,8 +92,7 @@ func Start(ctx context.Context, opts Options) (<-chan Result, *Stats) {
 type walker struct {
 	ctx   context.Context
 	opts  Options
-	sem   chan struct{}
-	wg    sync.WaitGroup
+	pool  *pool
 	out   chan<- Result
 	stats *Stats
 }
@@ -119,18 +103,10 @@ func (w *walker) walk(dir string, root bool) {
 		return
 	}
 
-	f, err := os.Open(dir)
-	if err != nil {
+	entries, ok := readDir(dir)
+	if !ok {
 		// Acceso denegado, ruta eliminada durante el recorrido, etc.
 		// Se contabiliza y se sigue con el resto del árbol.
-		w.stats.denied.Add(1)
-		return
-	}
-	// File.ReadDir no ordena las entradas (os.ReadDir sí), lo que ahorra
-	// trabajo innecesario en carpetas grandes.
-	entries, err := f.ReadDir(-1)
-	f.Close()
-	if err != nil && len(entries) == 0 {
 		w.stats.denied.Add(1)
 		return
 	}
@@ -169,7 +145,7 @@ func (w *walker) walk(dir string, root bool) {
 		// coinciden, pero nunca se recorren: pueden apuntar fuera de la raíz
 		// o formar ciclos infinitos (p. ej. "Application Data").
 		if !kind.link {
-			w.descend(path)
+			w.pool.do(func() { w.walk(path, false) })
 		}
 	}
 }
@@ -207,45 +183,4 @@ func (w *walker) emit(r Result) bool {
 	case <-w.ctx.Done():
 		return false
 	}
-}
-
-// descend procesa path en una goroutine nueva si hay capacidad libre, o en la
-// goroutine actual en caso contrario.
-func (w *walker) descend(path string) {
-	select {
-	case w.sem <- struct{}{}:
-		w.wg.Add(1)
-		go func() {
-			defer func() {
-				<-w.sem
-				w.wg.Done()
-			}()
-			w.walk(path, false)
-		}()
-	default:
-		w.walk(path, false)
-	}
-}
-
-// join concatena dir y name evitando el coste de filepath.Join (que limpia la
-// ruta completa en cada llamada). dir siempre es una ruta ya limpia.
-func join(dir, name string) string {
-	if os.IsPathSeparator(dir[len(dir)-1]) {
-		return dir + name
-	}
-	return dir + string(os.PathSeparator) + name
-}
-
-// entryKind describe una entrada de directorio desde el punto de vista de la
-// búsqueda.
-type entryKind struct {
-	dir    bool // es una carpeta (o un enlace a una carpeta)
-	link   bool // es un enlace simbólico o junction: no se recorre
-	hidden bool // está oculta o es de sistema
-}
-
-// isDotName indica si el nombre empieza por punto (.git, .vscode, .cache...),
-// convención habitual para carpetas ocultas de herramientas de desarrollo.
-func isDotName(name string) bool {
-	return strings.HasPrefix(name, ".")
 }

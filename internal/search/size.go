@@ -3,8 +3,6 @@ package search
 import (
 	"context"
 	"io/fs"
-	"os"
-	"sync"
 	"sync/atomic"
 )
 
@@ -20,16 +18,15 @@ type SizeInfo struct {
 // dos veces el mismo contenido. Si ctx se cancela, devuelve lo sumado hasta
 // ese momento.
 func Size(ctx context.Context, root string) SizeInfo {
-	s := &sizer{ctx: ctx, sem: make(chan struct{}, DefaultWorkers())}
+	s := &sizer{ctx: ctx, pool: newPool(DefaultWorkers())}
 	s.walk(root)
-	s.wg.Wait()
+	s.pool.wait()
 	return SizeInfo{Bytes: s.bytes.Load(), Files: s.files.Load(), Denied: s.denied.Load()}
 }
 
 type sizer struct {
 	ctx    context.Context
-	sem    chan struct{}
-	wg     sync.WaitGroup
+	pool   *pool
 	bytes  atomic.Int64
 	files  atomic.Int64
 	denied atomic.Int64
@@ -40,14 +37,8 @@ func (s *sizer) walk(dir string) {
 		return
 	}
 
-	f, err := os.Open(dir)
-	if err != nil {
-		s.denied.Add(1)
-		return
-	}
-	entries, err := f.ReadDir(-1)
-	f.Close()
-	if err != nil && len(entries) == 0 {
+	entries, ok := readDir(dir)
+	if !ok {
 		s.denied.Add(1)
 		return
 	}
@@ -55,7 +46,8 @@ func (s *sizer) walk(dir string) {
 	for _, e := range entries {
 		if kind := inspect(dir, e); kind.dir {
 			if !kind.link {
-				s.descend(join(dir, e.Name()))
+				path := join(dir, e.Name())
+				s.pool.do(func() { s.walk(path) })
 			}
 			continue
 		}
@@ -68,23 +60,5 @@ func (s *sizer) walk(dir string) {
 			s.bytes.Add(info.Size())
 			s.files.Add(1)
 		}
-	}
-}
-
-// descend funciona igual que en la búsqueda: una goroutine nueva si hay
-// capacidad libre y, si no, en la goroutine actual.
-func (s *sizer) descend(path string) {
-	select {
-	case s.sem <- struct{}{}:
-		s.wg.Add(1)
-		go func() {
-			defer func() {
-				<-s.sem
-				s.wg.Done()
-			}()
-			s.walk(path)
-		}()
-	default:
-		s.walk(path)
 	}
 }
