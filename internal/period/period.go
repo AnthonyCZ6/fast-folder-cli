@@ -4,11 +4,15 @@
 package period
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// ErrInvalid es el error que devuelve Parse cuando no reconoce el periodo.
+var ErrInvalid = errors.New("periodo no válido")
 
 // Range es un intervalo [After, Before). Un extremo cero significa "sin
 // límite".
@@ -50,8 +54,8 @@ func Parse(s string, now time.Time) (Range, error) {
 	if date, err := time.ParseInLocation("2006-01-02", value, now.Location()); err == nil {
 		return Range{After: date, Label: "desde el " + date.Format("02/01/2006")}, nil
 	}
-	return Range{}, fmt.Errorf("periodo no válido %q: usa hoy, ayer, semana, mes, año, "+
-		"un número de días (7d) o una fecha (2026-09-01)", s)
+	return Range{}, fmt.Errorf("%w %q: usa hoy, ayer, semana, mes, año, "+
+		"un número de días (7d) o una fecha (2026-09-01)", ErrInvalid, s)
 }
 
 // lastDays devuelve el intervalo formado por hoy y los days-1 días anteriores.

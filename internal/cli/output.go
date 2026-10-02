@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/humanize"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
 
@@ -25,6 +26,7 @@ const (
 
 // summary reúne los datos que se muestran al terminar la búsqueda.
 type summary struct {
+	query       query.Query // lo que se buscó, para nombrar los resultados
 	found       int64
 	scanned     int64
 	denied      int64
@@ -32,7 +34,6 @@ type summary struct {
 	openErr     error
 	interrupted bool
 	elapsed     time.Duration
-	projects    bool  // se buscaban proyectos en lugar de carpetas
 	sized       bool  // se calculó el tamaño de los resultados (--size)
 	bytes       int64 // tamaño total de los resultados
 	files       int64 // archivos en total dentro de los resultados
@@ -121,14 +122,10 @@ func (p *printer) summary(s summary) {
 	}
 	fmt.Fprintln(p.w, p.paint(rule, ansiDim))
 
-	one, many := "carpeta encontrada", "carpetas encontradas"
-	if s.projects {
-		one, many = "proyecto encontrado", "proyectos encontrados"
-	}
 	if s.found == 0 {
 		p.field("Resultados", p.paint("sin coincidencias", ansiYellow))
 	} else {
-		p.field("Resultados", p.paint(humanize.Count(s.found, one, many), ansiBold, ansiGreen))
+		p.field("Resultados", p.paint(s.query.Found(s.found), ansiBold, ansiGreen))
 	}
 	if s.sized {
 		total := humanize.Bytes(s.bytes) + " en total"

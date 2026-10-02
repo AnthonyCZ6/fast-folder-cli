@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -100,7 +102,7 @@ func selector(value string, focused bool, width int) string {
 
 func (m model) viewResults() string {
 	var b strings.Builder
-	where := styleName.Render(m.desc) + " en " + m.root
+	where := styleName.Render(capitalize(m.query.Describe())) + " en " + m.root
 	if m.hidden {
 		where += styleDim.Render(" (con ocultas)")
 	}
@@ -114,7 +116,7 @@ func (m model) viewResults() string {
 			lines = 1
 		} else {
 			empty := "No se encontró ninguna carpeta con ese nombre."
-			if m.searchProjects {
+			if m.query.Projects {
 				empty = "No se encontró ningún proyecto."
 			}
 			b.WriteString(m.line("   "+styleWarn.Render(empty)) + "\n")
@@ -170,11 +172,7 @@ func (m model) resultLine(r search.Result, selected bool, nameW int) string {
 }
 
 func (m model) statsLine() string {
-	one, many := "carpeta encontrada", "carpetas encontradas"
-	if m.searchProjects {
-		one, many = "proyecto encontrado", "proyectos encontrados"
-	}
-	found := humanize.Count(int64(len(m.results)), one, many)
+	found := m.query.Found(int64(len(m.results)))
 	var scanned, denied int64
 	if m.stats != nil {
 		scanned, denied = m.stats.Scanned(), m.stats.Denied()
@@ -227,4 +225,13 @@ func truncateLeft(s string, width int) string {
 
 func padRight(s string, width int) string {
 	return s + strings.Repeat(" ", max(width-ansi.StringWidth(s), 0))
+}
+
+// capitalize pone en mayúscula la primera letra de s.
+func capitalize(s string) string {
+	r, size := utf8.DecodeRuneInString(s)
+	if size == 0 {
+		return s
+	}
+	return string(unicode.ToUpper(r)) + s[size:]
 }

@@ -5,6 +5,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/humanize"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/launch"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/period"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
 
@@ -148,23 +150,22 @@ type model struct {
 	formErr   string
 
 	// Resultados.
-	gen            int // identifica la búsqueda en curso para descartar lotes viejos
-	pending        <-chan search.Result
-	cancel         context.CancelFunc
-	stats          *search.Stats
-	desc           string // qué se busca, para la cabecera
-	root           string
-	searchProjects bool // la búsqueda en curso es de proyectos
-	results        []search.Result
-	cursor         int
-	offset         int
-	searching      bool
-	started        time.Time
-	elapsed        time.Duration
-	spinner        spinner.Model
-	ticking        bool
-	status         string
-	statusErr      bool
+	gen       int // identifica la búsqueda en curso para descartar lotes viejos
+	pending   <-chan search.Result
+	cancel    context.CancelFunc
+	stats     *search.Stats
+	query     query.Query // lo que se busca, para la cabecera y el recuento
+	root      string
+	results   []search.Result
+	cursor    int
+	offset    int
+	searching bool
+	started   time.Time
+	elapsed   time.Duration
+	spinner   spinner.Model
+	ticking   bool
+	status    string
+	statusErr bool
 
 	// Tamaño y fecha de la carpeta seleccionada (tecla d).
 	detailsGen    int
@@ -358,27 +359,17 @@ func (m model) setFocus(f field) (tea.Model, tea.Cmd) {
 }
 
 func (m model) startSearch() (tea.Model, tea.Cmd) {
-	term := strings.TrimSpace(m.input.Value())
-	date := m.dates[m.dateIndex]
-	if term == "" && !m.projects && date.value == "" {
+	q, err := query.New(m.input.Value(), m.projects, m.dates[m.dateIndex].value, time.Now())
+	switch {
+	case errors.Is(err, query.ErrEmpty):
 		m.formErr = "Escribe el nombre (o parte del nombre) de la carpeta que buscas, o elige Proyectos o una fecha."
 		return m.setFocus(fieldTerm)
-	}
-	var matcher *search.Matcher
-	if term != "" {
-		var err error
-		if matcher, err = search.NewMatcher(term); err != nil {
-			m.formErr = err.Error()
-			return m.setFocus(fieldTerm)
-		}
-	}
-	var when period.Range
-	if date.value != "" {
-		var err error
-		if when, err = period.Parse(date.value, time.Now()); err != nil {
-			m.formErr = err.Error()
-			return m.setFocus(fieldDate)
-		}
+	case errors.Is(err, period.ErrInvalid):
+		m.formErr = err.Error()
+		return m.setFocus(fieldDate)
+	case err != nil:
+		m.formErr = err.Error()
+		return m.setFocus(fieldTerm)
 	}
 	if len(m.locations) == 0 {
 		m.formErr = "No hay ubicaciones disponibles para buscar."
@@ -388,22 +379,14 @@ func (m model) startSearch() (tea.Model, tea.Cmd) {
 	m.cancelSearch()
 	ctx, cancel := context.WithCancel(context.Background())
 	loc := m.locations[m.locIndex]
-	ch, stats := search.Start(ctx, search.Options{
-		Root:           loc.Path,
-		Matcher:        matcher,
-		IncludeHidden:  m.hidden,
-		Projects:       m.projects,
-		ModifiedAfter:  when.After,
-		ModifiedBefore: when.Before,
-	})
+	ch, stats := search.Start(ctx, q.Options(loc.Path, m.hidden))
 
 	m.gen++
 	m.pending = ch
 	m.cancel = cancel
 	m.stats = stats
-	m.desc = describe(term, m.projects, when)
+	m.query = q
 	m.root = loc.Path
-	m.searchProjects = m.projects
 	m.results = nil
 	m.cursor, m.offset = 0, 0
 	m.searching = true
@@ -419,29 +402,6 @@ func (m model) startSearch() (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.spinner.Tick)
 	}
 	return m, tea.Batch(cmds...)
-}
-
-// describe resume lo que se busca para la cabecera de los resultados.
-func describe(term string, projects bool, when period.Range) string {
-	var desc string
-	switch {
-	case projects && term != "":
-		desc = `Proyectos "` + term + `"`
-	case projects:
-		desc = "Proyectos"
-	case term != "":
-		desc = `"` + term + `"`
-	default:
-		desc = "Carpetas"
-	}
-	if when.Label != "" {
-		adjective := " modificadas "
-		if projects {
-			adjective = " modificados "
-		}
-		desc += adjective + when.Label
-	}
-	return desc
 }
 
 func (m *model) cancelSearch() {

@@ -20,6 +20,7 @@ import (
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/launch"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/pathutil"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/period"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/tui"
 )
@@ -50,8 +51,6 @@ type config struct {
 // Run ejecuta la CLI con los argumentos indicados (sin el nombre del programa)
 // y devuelve el código de salida del proceso.
 func Run(args []string, stdout, stderr io.Writer, version string) int {
-	start := time.Now()
-
 	// Sin argumentos y en una terminal se abre el modo interactivo, que se
 	// maneja con las flechas. Si la salida está redirigida se muestra la ayuda.
 	if len(args) == 0 && isInteractive(stdout) {
@@ -74,44 +73,36 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	// terminal se abre el modo interactivo con las opciones indicadas (así
 	// funciona "fast -p D:" y el menú contextual del Explorador). --cd-file,
 	// que usan los scripts fcd, también lo abre siempre.
-	needsTerm := cfg.term == "" && !cfg.projects && cfg.modified == ""
-	if cfg.cdFile != "" || (needsTerm && isInteractive(stdout)) {
+	q, err := query.New(cfg.term, cfg.projects, cfg.modified, time.Now())
+	empty := errors.Is(err, query.ErrEmpty)
+	if cfg.cdFile != "" || (empty && isInteractive(stdout)) {
 		return runInteractive(cfg, stdout, stderr, version)
 	}
-	if needsTerm {
+	switch {
+	case empty:
 		printUsage(stderr)
 		return exitUsage
+	case err != nil:
+		return usageError(stderr, err)
 	}
 
-	var matcher *search.Matcher
-	if cfg.term != "" {
-		if matcher, err = search.NewMatcher(cfg.term); err != nil {
-			return usageError(stderr, err)
-		}
-	}
 	root, err := pathutil.Resolve(cfg.root)
 	if err != nil {
 		return usageError(stderr, err)
 	}
-	var when period.Range
-	if cfg.modified != "" {
-		if when, err = period.Parse(cfg.modified, time.Now()); err != nil {
-			return usageError(stderr, err)
-		}
-	}
+	return runSearch(cfg, q, root, stdout, stderr)
+}
 
+// runSearch busca q en root, muestra cada carpeta en cuanto aparece y termina
+// con un resumen. Devuelve el código de salida.
+func runSearch(cfg config, q query.Query, root string, stdout, stderr io.Writer) int {
+	start := time.Now()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	results, stats := search.Start(ctx, search.Options{
-		Root:           root,
-		Matcher:        matcher,
-		IncludeHidden:  cfg.all,
-		Projects:       cfg.projects,
-		ModifiedAfter:  when.After,
-		ModifiedBefore: when.Before,
-		Prune:          cfg.size,
-	})
+	opts := q.Options(root, cfg.all)
+	opts.Prune = cfg.size
+	results, stats := search.Start(ctx, opts)
 
 	// La salida se agrupa en un búfer que se vacía cada vez que no hay más
 	// resultados inmediatamente disponibles: los resultados aparecen en
@@ -119,7 +110,7 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	// escriben línea a línea en la consola (que es lenta).
 	out := bufio.NewWriter(stdout)
 	p := newPrinter(out, supportsColor(stdout))
-	p.header(describe(cfg, when), root, cfg.all)
+	p.header(q.Describe(), root, cfg.all)
 
 	next := func() (search.Result, bool) {
 		select {
@@ -132,7 +123,7 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 		}
 	}
 
-	sum := summary{projects: cfg.projects}
+	sum := summary{query: q}
 	var found []search.Result
 	for r, ok := next(); ok; r, ok = next() {
 		sum.found++
@@ -223,29 +214,6 @@ func measure(ctx context.Context, found []search.Result) []sized {
 		return cmp.Compare(b.Bytes, a.Bytes)
 	})
 	return list
-}
-
-// describe resume lo que se busca para la cabecera: `"tesis"`,
-// `proyectos "api"`, `carpetas modificadas hoy`...
-func describe(cfg config, when period.Range) string {
-	var parts []string
-	switch {
-	case cfg.projects:
-		parts = append(parts, "proyectos")
-	case cfg.term == "" || when.Label != "":
-		parts = append(parts, "carpetas")
-	}
-	if cfg.term != "" {
-		parts = append(parts, `"`+cfg.term+`"`)
-	}
-	if when.Label != "" {
-		adjective := "modificadas"
-		if cfg.projects {
-			adjective = "modificados"
-		}
-		parts = append(parts, adjective+" "+when.Label)
-	}
-	return strings.Join(parts, " ")
 }
 
 // parseArgs interpreta los argumentos. Cada opción admite su forma corta y
