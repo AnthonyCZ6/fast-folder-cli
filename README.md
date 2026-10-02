@@ -582,6 +582,7 @@ fast-folder-cli/
 ├── internal/
 │   ├── cli/                       # Banderas, formato de salida y colores de consola
 │   ├── tui/                       # Modo interactivo con flechas (Bubble Tea)
+│   ├── query/                     # Qué se busca (término, proyectos, fecha): validación y descripción comunes a cli y tui
 │   ├── search/                    # Búsqueda concurrente, coincidencia sin acentos, proyectos y tamaños
 │   ├── period/                    # Periodos de fecha en español ("hoy", "semana", "7d")
 │   ├── pathutil/                  # Resolución de %VARIABLES%, ~ y unidades

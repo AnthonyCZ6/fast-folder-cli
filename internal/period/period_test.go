@@ -1,6 +1,7 @@
 package period
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -41,8 +42,8 @@ func TestParse(t *testing.T) {
 func TestParseErrors(t *testing.T) {
 	now := time.Now()
 	for _, input := range []string{"", "mañana", "0d", "-3d", "d", "2026-13-01", "01/09/2026"} {
-		if _, err := Parse(input, now); err == nil {
-			t.Errorf("Parse(%q): se esperaba un error", input)
+		if _, err := Parse(input, now); !errors.Is(err, ErrInvalid) {
+			t.Errorf("Parse(%q) error = %v, want ErrInvalid", input, err)
 		}
 	}
 }

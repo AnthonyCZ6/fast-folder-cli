@@ -178,8 +178,15 @@ func TestFormErrors(t *testing.T) {
 		t.Errorf("escribir debería limpiar el error, queda %q", m.formErr)
 	}
 	m = send(m, keys("enter")...)
-	if !strings.Contains(m.formErr, "patrón inválido") {
-		t.Errorf("patrón inválido: error = %q", m.formErr)
+	if !strings.Contains(m.formErr, "patrón inválido") || m.focus != fieldTerm {
+		t.Errorf("patrón inválido: error = %q, foco = %v", m.formErr, m.focus)
+	}
+
+	// Un periodo no válido se señala en el campo Fecha.
+	m, _ = newTestModel(testLocations...)
+	m = m.apply(Options{Term: "informe", Modified: "mañana"})
+	if m.screen != screenForm || m.focus != fieldDate || !strings.Contains(m.formErr, "periodo no válido") {
+		t.Errorf("periodo no válido: pantalla = %v, foco = %v, error = %q", m.screen, m.focus, m.formErr)
 	}
 }
 
@@ -408,6 +415,9 @@ func TestApplyOptions(t *testing.T) {
 	m = drain(t, m, m.initCmd)
 	if len(m.results) != 1 || filepath.Base(m.results[0].Path) != "Informe-final" {
 		t.Errorf("resultados = %+v, want Informe-final", m.results)
+	}
+	if view := m.View().Content; !strings.Contains(view, `Carpetas "informe" modificadas en los últimos 3 días`) {
+		t.Errorf("cabecera inesperada:\n%s", view)
 	}
 	if len(dateOptions) != 5 {
 		t.Errorf("las opciones de fecha por defecto no deberían cambiar: %+v", dateOptions)
