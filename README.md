@@ -576,14 +576,16 @@ fast-folder-cli/
 │   └── scripts/release-notes.sh   # Notas de versión a partir de los commits
 ├── installer/fast-folder-cli.iss  # Asistente de instalación (Inno Setup)
 ├── install.ps1                    # Instalador de un solo comando para Windows
+├── shell/                         # Comando fcd para PowerShell (fcd.ps1) y cmd (fcd.cmd)
 ├── main.go                        # Punto de entrada
 ├── internal/
 │   ├── cli/                       # Banderas, formato de salida y colores de consola
 │   ├── tui/                       # Modo interactivo con flechas (Bubble Tea)
-│   ├── search/                    # Motor de búsqueda concurrente y coincidencia de nombres
+│   ├── search/                    # Búsqueda concurrente, coincidencia sin acentos, proyectos y tamaños
+│   ├── period/                    # Periodos de fecha en español ("hoy", "semana", "7d")
 │   ├── pathutil/                  # Resolución de %VARIABLES%, ~ y unidades
-│   ├── explorer/                  # Apertura de carpetas en el Explorador de Windows
-│   └── humanize/                  # Formato de números ("52,341") y plurales
+│   ├── launch/                    # Explorador, VS Code, terminal y portapapeles
+│   └── humanize/                  # Formato de números ("52,341"), tamaños ("1.5 KB") y plurales
 ├── go.mod
 ├── LICENSE
 └── README.md
@@ -627,9 +629,11 @@ El workflow entonces:
    coinciden con la versión en los tres ejecutables.
 3. Genera el asistente `fast-folder-cli-setup.exe` con [Inno Setup](https://jrsoftware.org/isinfo.php)
    (versión y SHA-256 fijados en el workflow) y comprueba en Windows que se instala y
-   desinstala correctamente en modo silencioso.
-4. Crea el release en GitHub con los tres ejecutables, `checksums.txt` (SHA-256) y notas
-   generadas a partir de los mensajes de commit, agrupados por tipo (`feat`, `fix`, `docs`...).
+   desinstala correctamente en modo silencioso, igual que `install.ps1` con los archivos
+   recién compilados (`-SourceDir`): ejecutables, `fcd` y menú contextual.
+4. Crea el release en GitHub con los tres ejecutables, los scripts de `fcd`, `checksums.txt`
+   (SHA-256) y notas generadas a partir de los mensajes de commit, agrupados por tipo (`feat`,
+   `fix`, `docs`...).
 5. Instala la versión recién publicada con [`install.ps1`](install.ps1) en un Windows limpio
    (Windows PowerShell 5.1 y PowerShell 7), la usa y la desinstala, para garantizar que el
    comando de instalación funciona.

@@ -64,8 +64,9 @@ sed -e "s|{{TAG}}|$tag|g" \
 [fast-folder-cli-setup.exe]({{REPO_URL}}/releases/download/{{TAG}}/fast-folder-cli-setup.exe),
 ábrelo y sigue los pasos. No requiere permisos de administrador, instala la versión
 adecuada para tu equipo (x64 o ARM64), agrega `fast-folder-cli` al PATH con el atajo
-`fast` y se puede desinstalar desde **Configuración → Aplicaciones**. Después, abre una
-terminal nueva y escribe `fast --help`.
+`fast`, el comando `fcd` y la opción **Buscar carpetas aquí** del menú contextual del
+Explorador, y se puede desinstalar desde **Configuración → Aplicaciones**. Después, abre
+una terminal nueva y escribe `fast`.
 
 **Desde la terminal:** abre PowerShell y ejecuta (instala o actualiza):
 
@@ -73,8 +74,9 @@ terminal nueva y escribe `fast --help`.
 irm {{RAW_URL}}/main/install.ps1 | iex
 ```
 
-El script detecta si tu equipo es x64 o ARM64, verifica la suma SHA-256 y agrega
-`fast-folder-cli` al PATH con el atajo `fast`. Para instalar exactamente esta versión:
+El script detecta si tu equipo es x64 o ARM64, verifica las sumas SHA-256 y agrega
+`fast-folder-cli` al PATH con el atajo `fast`, el comando `fcd` y el menú contextual del
+Explorador. Para instalar exactamente esta versión:
 
 ```powershell
 & ([scriptblock]::Create((irm {{RAW_URL}}/main/install.ps1))) -Version {{TAG}}
