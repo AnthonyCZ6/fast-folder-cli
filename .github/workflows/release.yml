@@ -76,7 +76,6 @@ jobs:
       - name: Compilar para Windows (amd64 y arm64)
         env:
           CGO_ENABLED: "0"
-          GOOS: windows
         run: |
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             version="${GITHUB_REF_NAME#v}"
@@ -88,6 +87,7 @@ jobs:
           # Nombre del producto y versión que Windows muestra en Propiedades →
           # Detalles (SignPath los exige en los ejecutables firmados). go build
           # incluye automáticamente los rsrc_windows_<arch>.syso generados.
+          # GOOS solo se define al compilar: go-winres debe ejecutarse en Linux.
           go run github.com/tc-hib/go-winres@v0.3.3 simply \
             --arch amd64,arm64 \
             --manifest none \
@@ -100,7 +100,7 @@ jobs:
 
           mkdir -p dist
           for arch in amd64 arm64; do
-            GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=$version" \
+            GOOS=windows GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=$version" \
               -o "dist/fast-folder-cli-windows-$arch.exe" .
           done
 
