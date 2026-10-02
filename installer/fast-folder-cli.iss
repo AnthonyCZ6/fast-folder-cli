@@ -63,17 +63,20 @@ SolidCompression=yes
 Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Messages]
-FinishedLabelNoIcons=El asistente terminó de instalar [name] en su equipo.%n%nPara usarlo, abra una terminal nueva (PowerShell o Símbolo del sistema) y escriba:%n%n    fast%n%nSe abrirá una búsqueda que se maneja con las flechas del teclado.
+FinishedLabelNoIcons=El asistente terminó de instalar [name] en su equipo.%n%nPara usarlo, abra una terminal nueva (PowerShell o Símbolo del sistema) y escriba:%n%n    fast%n%nSe abrirá una búsqueda que se maneja con las flechas del teclado. Con fcd seguido de un nombre (por ejemplo, fcd tesis) la terminal entra en la carpeta que elija.
 
 [CustomMessages]
 Options=Opciones:
 AddToPath=Agregar fast-folder-cli al PATH (recomendado: permite usarlo desde cualquier terminal)
 FastAlias=Crear el atajo "fast" (para escribir fast en lugar de fast-folder-cli)
+ContextMenu=Agregar "Buscar carpetas aquí" al menú contextual del Explorador
+ContextMenuLabel=Buscar carpetas aquí (fast-folder-cli)
 OpenTerminal=Abrir fast-folder-cli ahora (búsqueda con las flechas)
 
 [Tasks]
 Name: "addtopath"; Description: "{cm:AddToPath}"; GroupDescription: "{cm:Options}"
 Name: "fastalias"; Description: "{cm:FastAlias}"; GroupDescription: "{cm:Options}"
+Name: "contextmenu"; Description: "{cm:ContextMenu}"; GroupDescription: "{cm:Options}"
 
 [Files]
 Source: "..\dist\fast-folder-cli-windows-amd64.exe"; DestDir: "{app}"; DestName: "{#AppExe}"; Check: not IsArm64; Flags: ignoreversion
@@ -83,8 +86,23 @@ Source: "..\dist\fast-folder-cli-windows-arm64.exe"; DestDir: "{app}"; DestName:
 ; alias de PowerShell, y se actualiza y desinstala junto con el programa.
 Source: "..\dist\fast-folder-cli-windows-amd64.exe"; DestDir: "{app}"; DestName: "fast.exe"; Check: not IsArm64; Tasks: fastalias; Flags: ignoreversion
 Source: "..\dist\fast-folder-cli-windows-arm64.exe"; DestDir: "{app}"; DestName: "fast.exe"; Check: IsArm64; Tasks: fastalias; Flags: ignoreversion
+; Comando fcd (buscar una carpeta y entrar en ella) para PowerShell y cmd.
+Source: "..\shell\fcd.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\shell\fcd.cmd"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
+
+[Registry]
+; "Buscar carpetas aquí" en el menú contextual del Explorador, al hacer clic
+; derecho en el fondo de una carpeta y sobre una carpeta. Abre el modo
+; interactivo con esa carpeta como ubicación. En Windows 11 aparece en
+; "Mostrar más opciones".
+Root: HKCU; Subkey: "Software\Classes\Directory\Background\shell\fast-folder-cli"; ValueType: string; ValueName: ""; ValueData: "{cm:ContextMenuLabel}"; Flags: uninsdeletekey; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\Background\shell\fast-folder-cli"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\{#AppExe}"""; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\Background\shell\fast-folder-cli\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" --path ""%V"""; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\fast-folder-cli"; ValueType: string; ValueName: ""; ValueData: "{cm:ContextMenuLabel}"; Flags: uninsdeletekey; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\fast-folder-cli"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\{#AppExe}"""; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\fast-folder-cli\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" --path ""%V"""; Tasks: contextmenu
 
 [InstallDelete]
 ; Si al actualizar se desmarca el atajo, se elimina el que existía.
@@ -99,6 +117,8 @@ Filename: "{cmd}"; Parameters: "/k ""set ""PATH={app};%PATH%"" && fast-folder-cl
 [Code]
 const
   EnvironmentKey = 'Environment';
+  MenuKeyBackground = 'Software\Classes\Directory\Background\shell\fast-folder-cli';
+  MenuKeyFolder = 'Software\Classes\Directory\shell\fast-folder-cli';
 
 function NormalizeDir(const Dir: string): string;
 begin
@@ -179,6 +199,12 @@ begin
       AddDirToUserPath(ExpandConstant('{app}'))
     else
       RemoveDirFromUserPath(ExpandConstant('{app}'));
+    { Y quita la opción del menú contextual que agregó una instalación anterior. }
+    if not WizardIsTaskSelected('contextmenu') then
+    begin
+      RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, MenuKeyBackground);
+      RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, MenuKeyFolder);
+    end;
   end;
 end;
 

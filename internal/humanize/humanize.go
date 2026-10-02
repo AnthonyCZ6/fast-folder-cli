@@ -30,3 +30,23 @@ func Count(n int64, one, many string) string {
 	}
 	return Int(n) + " " + many
 }
+
+// Bytes formatea un tamaño con la unidad más adecuada, en múltiplos de 1024
+// como el Explorador de Windows: 1536 -> "1.5 KB", 157286400 -> "150 MB".
+func Bytes(n int64) string {
+	if n < 1024 {
+		return Count(n, "byte", "bytes")
+	}
+	units := []string{"KB", "MB", "GB", "TB", "PB"}
+	v := float64(n) / 1024
+	i := 0
+	for v >= 1024 && i < len(units)-1 {
+		v /= 1024
+		i++
+	}
+	decimals := 1
+	if v >= 100 {
+		decimals = 0
+	}
+	return strconv.FormatFloat(v, 'f', decimals, 64) + " " + units[i]
+}

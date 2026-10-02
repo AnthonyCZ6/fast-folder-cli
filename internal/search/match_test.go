@@ -19,6 +19,15 @@ func TestMatcher(t *testing.T) {
 		{"tesis-202?", "Tesis-20245", false},
 		{"[ab]ackup", "Backup", true},
 		{"[ab]ackup", "Cackup", false},
+		// Sin distinguir acentos, diéresis ni la tilde de la ñ.
+		{"cancion", "Canción", true},
+		{"CANCIÓN", "cancion", true},
+		{"ano", "Año 2024", true},
+		{"pinguino", "Pingüino", true},
+		{"cafe*", "Café-Internet", true},
+		{"cafe", "Cafe\u0301", true}, // forma descompuesta
+		{"tesis", "Tésis", true},
+		{"cancion", "Canciones", false},
 	}
 	for _, tt := range tests {
 		m, err := NewMatcher(tt.term)

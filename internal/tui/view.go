@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/humanize"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
 
 // Nota: solo se usan símbolos presentes en las fuentes de la consola clásica
@@ -33,9 +34,12 @@ func (m model) viewForm() string {
 	}
 	b.WriteString(m.line(m.header(styleDim.Render(version))) + "\n\n")
 
-	valueW := 2
+	valueW := ansi.StringWidth("Proyectos")
 	for _, loc := range m.locations {
 		valueW = max(valueW, ansi.StringWidth(loc.Label))
+	}
+	for _, d := range m.dates {
+		valueW = max(valueW, ansi.StringWidth(d.label))
 	}
 
 	b.WriteString(m.line(m.formRow(fieldTerm, "Buscar", m.input.View(), "")) + "\n")
@@ -44,11 +48,22 @@ func (m model) viewForm() string {
 		value := selector(loc.Label, m.focus == fieldLocation, valueW)
 		b.WriteString(m.line(m.formRow(fieldLocation, "Ubicación", value, loc.Path)) + "\n")
 	}
+
+	kind, kindHint := "Carpetas", "cualquier carpeta cuyo nombre coincida"
+	if m.projects {
+		kind, kindHint = "Proyectos", "carpetas con .git, package.json, go.mod... (el nombre es opcional)"
+	}
+	value := selector(kind, m.focus == fieldKind, valueW)
+	b.WriteString(m.line(m.formRow(fieldKind, "Tipo", value, kindHint)) + "\n")
+
+	value = selector(m.dates[m.dateIndex].label, m.focus == fieldDate, valueW)
+	b.WriteString(m.line(m.formRow(fieldDate, "Modificada", value, "fecha de modificación de la carpeta")) + "\n")
+
 	hidden := "No"
 	if m.hidden {
 		hidden = "Sí"
 	}
-	value := selector(hidden, m.focus == fieldHidden, valueW)
+	value = selector(hidden, m.focus == fieldHidden, valueW)
 	b.WriteString(m.line(m.formRow(fieldHidden, "Ocultas", value, "carpetas ocultas y de sistema")) + "\n")
 
 	b.WriteString("\n")
@@ -85,7 +100,7 @@ func selector(value string, focused bool, width int) string {
 
 func (m model) viewResults() string {
 	var b strings.Builder
-	where := styleName.Render(`"`+m.term+`"`) + " en " + m.root
+	where := styleName.Render(m.desc) + " en " + m.root
 	if m.hidden {
 		where += styleDim.Render(" (con ocultas)")
 	}
@@ -98,8 +113,12 @@ func (m model) viewResults() string {
 			b.WriteString(m.line("   "+styleDim.Render("Buscando...")) + "\n")
 			lines = 1
 		} else {
-			b.WriteString(m.line("   "+styleWarn.Render("No se encontró ninguna carpeta con ese nombre.")) + "\n")
-			b.WriteString(m.line("   "+styleDim.Render("Pulsa ← para cambiar la búsqueda: prueba otra ubicación o incluir las ocultas.")) + "\n")
+			empty := "No se encontró ninguna carpeta con ese nombre."
+			if m.searchProjects {
+				empty = "No se encontró ningún proyecto."
+			}
+			b.WriteString(m.line("   "+styleWarn.Render(empty)) + "\n")
+			b.WriteString(m.line("   "+styleDim.Render("Pulsa ← para cambiar la búsqueda: prueba otra ubicación, otra fecha o incluir las ocultas.")) + "\n")
 			lines = 2
 		}
 	} else {
@@ -122,23 +141,40 @@ func (m model) viewResults() string {
 		status = " " + style.Render(m.status)
 	}
 	b.WriteString(m.line(status) + "\n")
-	b.WriteString(m.line(help("↑↓", "moverse", "Enter", "abrir en el Explorador", "←", "nueva búsqueda", "Esc", "salir")))
+	if m.cdFile != "" {
+		b.WriteString(m.line(help("↑↓", "moverse", "Enter", "entrar en la carpeta", "←", "nueva búsqueda", "Esc", "salir")) + "\n")
+		b.WriteString(m.line(help("e", "Explorador", "c", "copiar ruta", "v", "VS Code", "t", "terminal", "d", "tamaño y fecha")))
+	} else {
+		b.WriteString(m.line(help("↑↓", "moverse", "Enter", "abrir en el Explorador", "←", "nueva búsqueda", "Esc", "salir")) + "\n")
+		b.WriteString(m.line(help("c", "copiar ruta", "v", "VS Code", "t", "terminal", "d", "tamaño y fecha")))
+	}
 	return b.String()
 }
 
-func (m model) resultLine(path string, selected bool, nameW int) string {
-	name := ansi.Truncate(filepath.Base(path), nameW, "...")
+func (m model) resultLine(r search.Result, selected bool, nameW int) string {
+	name := ansi.Truncate(filepath.Base(r.Path), nameW, "...")
 	name += strings.Repeat(" ", max(nameW-ansi.StringWidth(name), 0))
-	parent := truncateLeft(filepath.Dir(path), m.width-nameW-6)
+	kind := ""
+	if r.Project != "" {
+		kind = r.Project + "  "
+	}
+	parent := truncateLeft(filepath.Dir(r.Path), m.width-nameW-6-ansi.StringWidth(kind))
 	if selected {
-		line := " ► " + name + "  " + parent
+		line := " ► " + name + "  " + kind + parent
 		return styleCursor.Render(padRight(line, m.width))
 	}
-	return m.line("   " + styleName.Render(name) + "  " + styleDim.Render(parent))
+	if kind != "" {
+		kind = styleOK.Render(kind)
+	}
+	return m.line("   " + styleName.Render(name) + "  " + kind + styleDim.Render(parent))
 }
 
 func (m model) statsLine() string {
-	found := humanize.Count(int64(len(m.results)), "carpeta encontrada", "carpetas encontradas")
+	one, many := "carpeta encontrada", "carpetas encontradas"
+	if m.searchProjects {
+		one, many = "proyecto encontrado", "proyectos encontrados"
+	}
+	found := humanize.Count(int64(len(m.results)), one, many)
 	var scanned, denied int64
 	if m.stats != nil {
 		scanned, denied = m.stats.Scanned(), m.stats.Denied()

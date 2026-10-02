@@ -6,8 +6,10 @@
     Descarga el ejecutable de fast-folder-cli adecuado para tu equipo (x64 o
     ARM64) desde los releases de GitHub, verifica su suma SHA-256, lo copia en
     %LOCALAPPDATA%\Programs\fast-folder-cli (también como "fast.exe", un atajo
-    más corto) y agrega esa carpeta al PATH de tu usuario. No requiere permisos
-    de administrador.
+    más corto) y agrega esa carpeta al PATH de tu usuario. Desde la versión
+    1.2.0 instala también el comando fcd (buscar una carpeta y entrar en ella)
+    y la opción "Buscar carpetas aquí" en el menú contextual del Explorador.
+    No requiere permisos de administrador.
 
     Volver a ejecutarlo actualiza fast-folder-cli a la última versión.
 
@@ -17,8 +19,18 @@
 .PARAMETER InstallDir
     Carpeta de instalación. Por defecto, %LOCALAPPDATA%\Programs\fast-folder-cli.
 
+.PARAMETER SourceDir
+    Instala desde una carpeta con los archivos del release ya descargados
+    (fast-folder-cli-windows-*.exe, checksums.txt, fcd.ps1 y fcd.cmd) en lugar
+    de descargarlos: sirve para instalar sin conexión o probar una compilación.
+
+.PARAMETER NoContextMenu
+    No agrega la opción "Buscar carpetas aquí" al menú contextual del
+    Explorador (y la quita si ya estaba).
+
 .PARAMETER Uninstall
-    Elimina fast-folder-cli y quita su carpeta del PATH.
+    Elimina fast-folder-cli, quita su carpeta del PATH y su opción del menú
+    contextual.
 
 .EXAMPLE
     irm https://raw.githubusercontent.com/AnthonyCZ6/fast-folder-cli/main/install.ps1 | iex
@@ -40,6 +52,8 @@
 param(
     [string]$Version = 'latest',
     [string]$InstallDir = "$env:LOCALAPPDATA\Programs\fast-folder-cli",
+    [string]$SourceDir,
+    [switch]$NoContextMenu,
     [switch]$Uninstall
 )
 
@@ -54,6 +68,12 @@ param(
     $exe = Join-Path $InstallDir 'fast-folder-cli.exe'
     # Atajo "fast": copia del mismo ejecutable, válida en cualquier terminal.
     $alias = Join-Path $InstallDir 'fast.exe'
+    # Comando fcd (buscar una carpeta y entrar en ella) para PowerShell y cmd.
+    $scripts = 'fcd.ps1', 'fcd.cmd'
+    # Opción "Buscar carpetas aquí" del menú contextual del Explorador: al
+    # hacer clic derecho en el fondo de una carpeta y sobre una carpeta.
+    $menuKeys = 'HKCU:\Software\Classes\Directory\Background\shell\fast-folder-cli',
+        'HKCU:\Software\Classes\Directory\shell\fast-folder-cli'
 
     function Write-Step([string]$Message) { Write-Host "  $Message" }
     function Write-Done([string]$Message) { Write-Host "  $Message" -ForegroundColor Green }
@@ -105,16 +125,27 @@ param(
 
     # Descarga un archivo reintentando ante fallos transitorios de red (por
     # ejemplo, conexiones reutilizadas que el servidor ya cerró). Un 404 indica
-    # que la versión no existe y no se reintenta.
-    function Save-Url([string]$Uri, [string]$OutFile) {
+    # que la versión no existe y no se reintenta; con -Optional (archivos que
+    # las versiones antiguas no incluyen) devuelve $false en lugar de fallar.
+    function Save-Url([string]$Uri, [string]$OutFile, [switch]$Optional) {
+        if ($SourceDir) {
+            $local = Join-Path $SourceDir (Split-Path -Leaf $Uri)
+            if (Test-Path -LiteralPath $local) {
+                Copy-Item -LiteralPath $local -Destination $OutFile
+                return $true
+            }
+            if ($Optional) { return $false }
+            throw "No se encontró $local."
+        }
         for ($attempt = 1; ; $attempt++) {
             try {
                 Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $OutFile
-                return
+                return $true
             } catch {
                 $status = 0
                 if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
                 if ($status -eq 404) {
+                    if ($Optional) { return $false }
                     throw "No se encontró la versión '$Version'. Consulta las disponibles en https://github.com/$repo/releases"
                 }
                 if ($attempt -ge 3) {
@@ -129,17 +160,53 @@ param(
         try { ((& $exe --version) -replace '^fast-folder-cli\s+', '').Trim() } catch { $null }
     }
 
+    # Comprueba que el archivo descargado coincide con su suma en checksums.txt.
+    function Assert-Checksum([string]$File, [string]$Asset, [string[]]$Sums) {
+        $line = $Sums |
+            Where-Object { ($_ -split '\s+')[-1].TrimStart('*') -eq $Asset } |
+            Select-Object -First 1
+        if (-not $line) { throw "checksums.txt no contiene la suma de $Asset." }
+        $expected = ($line -split '\s+')[0]
+        $actual = (Get-FileHash -LiteralPath $File -Algorithm SHA256).Hash
+        if ($expected -ne $actual) {
+            throw "La suma SHA-256 de $Asset no coincide (esperada $expected, obtenida $actual). La descarga está dañada o fue alterada; no se instaló nada."
+        }
+    }
+
+    function Add-ContextMenu {
+        foreach ($key in $menuKeys) {
+            New-Item -Path "$key\command" -Force | Out-Null
+            Set-Item -LiteralPath $key -Value 'Buscar carpetas aquí (fast-folder-cli)'
+            Set-ItemProperty -LiteralPath $key -Name 'Icon' -Value "`"$exe`""
+            Set-Item -LiteralPath "$key\command" -Value "`"$exe`" --path `"%V`""
+        }
+    }
+
+    function Remove-ContextMenu {
+        $removed = $false
+        foreach ($key in $menuKeys) {
+            if (Test-Path -LiteralPath $key) {
+                Remove-Item -LiteralPath $key -Recurse -Force
+                $removed = $true
+            }
+        }
+        $removed
+    }
+
     # ---------------------------------------------------------------- desinstalar
     if ($Uninstall) {
         Write-Host ''
         Write-Host 'Desinstalando fast-folder-cli...' -ForegroundColor Cyan
 
         if (-not (Test-Path -LiteralPath $exe)) { Write-Step "No se encontró $exe" }
-        foreach ($file in $exe, $alias) {
+        foreach ($file in @($exe, $alias) + @($scripts | ForEach-Object { Join-Path $InstallDir $_ })) {
             if (Test-Path -LiteralPath $file) {
                 Remove-Item -LiteralPath $file -Force
                 Write-Step "Eliminado $file"
             }
+        }
+        if (Remove-ContextMenu) {
+            Write-Step 'Se quitó la opción "Buscar carpetas aquí" del menú contextual del Explorador.'
         }
         # Por seguridad, la carpeta solo se borra si quedó vacía.
         if ((Test-Path -LiteralPath $InstallDir) -and -not (Get-ChildItem -LiteralPath $InstallDir -Force)) {
@@ -163,7 +230,11 @@ param(
     # ------------------------------------------------------------------ instalar
     $arch = Get-Arch
     if ($Version -ne 'latest' -and $Version -notlike 'v*') { $Version = "v$Version" }
-    if ($Version -eq 'latest') {
+    if ($SourceDir) {
+        $SourceDir = (Resolve-Path -LiteralPath $SourceDir).Path
+        $baseUrl = $SourceDir
+        $label = "desde $SourceDir"
+    } elseif ($Version -eq 'latest') {
         $baseUrl = "https://github.com/$repo/releases/latest/download"
         $label = 'última versión'
     } else {
@@ -188,24 +259,29 @@ param(
         $tmpSums = Join-Path $tmp 'checksums.txt'
 
         Write-Step "Descargando $asset ($label)..."
-        Save-Url "$baseUrl/$asset" $tmpExe
-        Save-Url "$baseUrl/checksums.txt" $tmpSums
+        $null = Save-Url "$baseUrl/$asset" $tmpExe
+        $null = Save-Url "$baseUrl/checksums.txt" $tmpSums
+        # Las versiones anteriores a la 1.2.0 no incluyen los scripts de fcd.
+        $withScripts = $true
+        foreach ($script in $scripts) {
+            if (-not (Save-Url "$baseUrl/$script" (Join-Path $tmp $script) -Optional)) { $withScripts = $false }
+        }
 
-        Write-Step 'Verificando la suma SHA-256...'
-        $line = Get-Content -LiteralPath $tmpSums |
-            Where-Object { ($_ -split '\s+')[-1].TrimStart('*') -eq $asset } |
-            Select-Object -First 1
-        if (-not $line) { throw "checksums.txt no contiene la suma de $asset." }
-        $expected = ($line -split '\s+')[0]
-        $actual = (Get-FileHash -LiteralPath $tmpExe -Algorithm SHA256).Hash
-        if ($expected -ne $actual) {
-            throw "La suma SHA-256 de $asset no coincide (esperada $expected, obtenida $actual). La descarga está dañada o fue alterada; no se instaló nada."
+        Write-Step 'Verificando las sumas SHA-256...'
+        $sums = Get-Content -LiteralPath $tmpSums
+        Assert-Checksum $tmpExe $asset $sums
+        if ($withScripts) {
+            foreach ($script in $scripts) { Assert-Checksum (Join-Path $tmp $script) $script $sums }
         }
 
         New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-        foreach ($file in $exe, $alias) {
+        $copies = [ordered]@{ $exe = $tmpExe; $alias = $tmpExe }
+        if ($withScripts) {
+            foreach ($script in $scripts) { $copies[(Join-Path $InstallDir $script)] = Join-Path $tmp $script }
+        }
+        foreach ($file in $copies.Keys) {
             try {
-                Copy-Item -LiteralPath $tmpExe -Destination $file -Force
+                Copy-Item -LiteralPath $copies[$file] -Destination $file -Force
             } catch {
                 throw "No se pudo escribir $file. Si fast-folder-cli se está ejecutando, ciérralo y vuelve a intentarlo."
             }
@@ -230,6 +306,15 @@ param(
         $env:Path = $env:Path.TrimEnd(';') + ';' + $InstallDir
     }
 
+    # El menú contextual abre el modo interactivo con "--path <carpeta>", que
+    # las versiones anteriores a la 1.2.0 (sin scripts de fcd) no entienden.
+    if ($withScripts -and -not $NoContextMenu) {
+        Add-ContextMenu
+        Write-Step 'Se agregó "Buscar carpetas aquí" al menú contextual del Explorador (en Windows 11, en "Mostrar más opciones").'
+    } elseif (Remove-ContextMenu) {
+        Write-Step 'Se quitó la opción "Buscar carpetas aquí" del menú contextual del Explorador.'
+    }
+
     $installed = Get-InstalledVersion
     # Avisa si otro programa con el mismo nombre tiene prioridad en el PATH
     # (por ejemplo, el comando "fast" del paquete de npm fast-cli).
@@ -248,10 +333,21 @@ param(
     } else {
         Write-Done "fast-folder-cli $installed se instaló correctamente."
     }
+    if (-not $installed) {
+        Write-Warning "fast-folder-cli se copió, pero Windows no permitió ejecutarlo. Si Smart App Control está activado, consulta https://github.com/$repo#si-windows-bloquea-el-programa"
+    }
     Write-Host ''
     Write-Host '  Pruébalo:  ' -NoNewline
+    Write-Host 'fast' -ForegroundColor Yellow -NoNewline
+    Write-Host '           búsqueda con las flechas'
+    if ($withScripts) {
+        Write-Host '             ' -NoNewline
+        Write-Host 'fcd tesis' -ForegroundColor Yellow -NoNewline
+        Write-Host '      busca "tesis" y entra en la carpeta que elijas'
+    }
+    Write-Host '             ' -NoNewline
     Write-Host 'fast --help' -ForegroundColor Yellow -NoNewline
-    Write-Host '  (atajo de fast-folder-cli --help)'
+    Write-Host '    todas las opciones'
     Write-Host '  Si otra terminal no reconoce el comando, ciérrala y ábrela de nuevo.' -ForegroundColor DarkGray
     Write-Host ''
 }

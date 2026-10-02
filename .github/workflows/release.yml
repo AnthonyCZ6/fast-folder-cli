@@ -52,6 +52,7 @@ jobs:
           if [ -n "$unformatted" ]; then
             echo "::error::Archivos sin el formato de gofmt:"
             echo "$unformatted"
+            gofmt -d .
             exit 1
           fi
 
@@ -103,6 +104,9 @@ jobs:
             GOOS=windows GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=$version" \
               -o "dist/fast-folder-cli-windows-$arch.exe" .
           done
+          # Scripts del comando fcd: se publican junto a los ejecutables para
+          # que install.ps1 los descargue y verifique.
+          cp shell/fcd.ps1 shell/fcd.cmd dist/
 
       - uses: actions/upload-artifact@v7
         with:
@@ -182,6 +186,14 @@ jobs:
           if (((Get-ItemProperty HKCU:\Environment).Path -split ';') -notcontains $dir) {
             throw 'La carpeta no se agrego al PATH del usuario'
           }
+          foreach ($f in 'fcd.ps1', 'fcd.cmd') {
+            if (-not (Test-Path "$dir\$f")) { throw "El asistente no instalo $f" }
+          }
+          $menu = 'HKCU:\Software\Classes\Directory\Background\shell\fast-folder-cli'
+          $command = (Get-ItemProperty "$menu\command").'(default)'
+          if ($command -ne "`"$dir\fast-folder-cli.exe`" --path `"%V`"") {
+            throw "Comando inesperado en el menu contextual: $command"
+          }
 
           # El desinstalador se copia a %TEMP% y continua en segundo plano.
           Start-Process "$dir\unins000.exe" -Wait -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
@@ -190,7 +202,32 @@ jobs:
           if (((Get-ItemProperty HKCU:\Environment).Path -split ';') -contains $dir) {
             throw 'La carpeta sigue en el PATH tras desinstalar'
           }
+          if (Test-Path $menu) { throw 'El menu contextual sigue tras desinstalar' }
           Write-Host 'Instalacion y desinstalacion correctas.'
+
+      - name: Probar install.ps1 con esta compilacion
+        run: |
+          # Como en la publicacion: las sumas SHA-256 junto a los archivos.
+          Get-ChildItem dist\*.exe, dist\*.ps1, dist\*.cmd |
+            ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
+            Set-Content -Encoding ascii dist\checksums.txt
+          $installer = [scriptblock]::Create((Get-Content -Raw -Encoding UTF8 ./install.ps1))
+          & $installer -SourceDir dist
+
+          $dir = "$env:LOCALAPPDATA\Programs\fast-folder-cli"
+          foreach ($f in 'fast-folder-cli.exe', 'fast.exe', 'fcd.ps1', 'fcd.cmd') {
+            if (-not (Test-Path "$dir\$f")) { throw "install.ps1 no instalo $f" }
+          }
+          $menu = 'HKCU:\Software\Classes\Directory\shell\fast-folder-cli'
+          $command = (Get-ItemProperty "$menu\command").'(default)'
+          if ($command -ne "`"$dir\fast-folder-cli.exe`" --path `"%V`"") {
+            throw "Comando inesperado en el menu contextual: $command"
+          }
+
+          & $installer -Uninstall
+          if (Test-Path $dir) { throw 'La desinstalacion no elimino la carpeta' }
+          if (Test-Path $menu) { throw 'El menu contextual sigue tras desinstalar' }
+          Write-Host 'install.ps1 correcto.'
 
       - uses: actions/upload-artifact@v7
         with:
@@ -218,7 +255,7 @@ jobs:
       - name: Generar sumas SHA-256
         working-directory: dist
         run: |
-          sha256sum *.exe > checksums.txt
+          sha256sum *.exe *.ps1 *.cmd > checksums.txt
           cat checksums.txt
 
       - name: Generar notas de la versión
@@ -278,7 +315,17 @@ jobs:
           fast-folder-cli -n search -p .
           if ($LASTEXITCODE -ne 0) { throw "La busqueda de prueba fallo (codigo $LASTEXITCODE)" }
 
+          # fcd y el menu contextual llegaron en la 1.2.0: se comprueban al
+          # publicar (las ejecuciones manuales instalan la ultima version, que
+          # puede ser anterior).
+          $menu = 'HKCU:\Software\Classes\Directory\Background\shell\fast-folder-cli'
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            if (-not (Get-Command fcd -ErrorAction SilentlyContinue)) { throw 'El comando fcd no esta disponible' }
+            if (-not (Test-Path $menu)) { throw 'No se agrego el menu contextual' }
+          }
+
           & $installer -Uninstall
-          if (Get-Command fast-folder-cli, fast -ErrorAction SilentlyContinue) {
+          if (Get-Command fast-folder-cli, fast, fcd -ErrorAction SilentlyContinue) {
             throw 'fast-folder-cli sigue disponible tras desinstalar'
           }
+          if (Test-Path $menu) { throw 'El menu contextual sigue tras desinstalar' }

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,6 +10,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
 
 var specialKeys = map[string]rune{
@@ -50,14 +53,42 @@ func send(m model, msgs ...tea.Msg) model {
 	return m
 }
 
-func newTestModel(locs ...location) (model, *[]string) {
-	opened := &[]string{}
-	m := newModel("test", locs, func(p string) error {
-		*opened = append(*opened, p)
-		return nil
-	})
+// recorder registra las acciones ejecutadas sobre las carpetas, como
+// "explorer:C:\ruta".
+type recorder struct {
+	calls []string
+}
+
+func (r *recorder) actions() actions {
+	record := func(name string) func(string) error {
+		return func(path string) error {
+			r.calls = append(r.calls, name+":"+path)
+			return nil
+		}
+	}
+	return actions{
+		explorer: record("explorer"),
+		code:     record("code"),
+		terminal: record("terminal"),
+		copyPath: record("copy"),
+	}
+}
+
+func newTestModel(locs ...location) (model, *recorder) {
+	rec := &recorder{}
+	m := newModel("test", locs, rec.actions())
 	m = send(m, tea.WindowSizeMsg{Width: 100, Height: 20})
-	return m, opened
+	return m, rec
+}
+
+// withResults pone el modelo en la pantalla de resultados con esas carpetas.
+func withResults(m model, paths ...string) model {
+	m.screen, m.searching, m.gen = screenResults, true, 1
+	results := make([]search.Result, len(paths))
+	for i, p := range paths {
+		results[i] = search.Result{Path: p}
+	}
+	return send(m, resultsMsg{gen: 1, results: results, done: true})
 }
 
 var testLocations = []location{
@@ -87,6 +118,24 @@ func TestFormArrowNavigation(t *testing.T) {
 	m = send(m, keys("left")...)
 	if m.locIndex != 2 {
 		t.Errorf("←: ubicación = %d, want 2", m.locIndex)
+	}
+
+	m = send(m, keys("down", "right")...)
+	if m.focus != fieldKind || !m.projects {
+		t.Errorf("↓→: foco = %v proyectos = %v, want proyectos activados", m.focus, m.projects)
+	}
+	m = send(m, keys("left")...)
+	if m.projects {
+		t.Error("←: debería volver a buscar carpetas")
+	}
+
+	m = send(m, keys("down", "right", "right")...)
+	if m.focus != fieldDate || m.dates[m.dateIndex].value != "ayer" {
+		t.Errorf("↓→→: foco = %v fecha = %+v, want Ayer", m.focus, m.dates[m.dateIndex])
+	}
+	m = send(m, keys("left", "left", "left")...) // da la vuelta
+	if m.dateIndex != len(dateOptions)-1 {
+		t.Errorf("←←←: fecha = %d, want la última opción", m.dateIndex)
 	}
 
 	m = send(m, keys("down", "right")...)
@@ -145,12 +194,10 @@ func TestEscQuits(t *testing.T) {
 	}
 }
 
-// runSearch pulsa Enter y ejecuta los comandos resultantes hasta que la
-// búsqueda termina, como haría el bucle de Bubble Tea.
-func runSearch(t *testing.T, m model) model {
+// drain ejecuta cmd y los comandos que genere, como haría el bucle de Bubble
+// Tea, hasta que la búsqueda termina.
+func drain(t *testing.T, m model, cmd tea.Cmd) model {
 	t.Helper()
-	next, cmd := m.Update(key("enter"))
-	m = next.(model)
 	queue := []tea.Cmd{cmd}
 	deadline := time.Now().Add(10 * time.Second)
 	for m.searching {
@@ -177,15 +224,28 @@ func runSearch(t *testing.T, m model) model {
 	return m
 }
 
-func TestSearchAndOpenWithArrows(t *testing.T) {
+// runSearch pulsa Enter y espera a que la búsqueda termine.
+func runSearch(t *testing.T, m model) model {
+	t.Helper()
+	next, cmd := m.Update(key("enter"))
+	return drain(t, next.(model), cmd)
+}
+
+func makeTree(t *testing.T, dirs ...string) string {
+	t.Helper()
 	root := t.TempDir()
-	for _, d := range []string{"docs/Proyecto-A", "src/proyecto-b", "src/otro/proyecto-c", "nada"} {
+	for _, d := range dirs {
 		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(d)), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
+	return root
+}
 
-	m, opened := newTestModel(location{Label: "Temporal", Path: root})
+func TestSearchAndOpenWithArrows(t *testing.T) {
+	root := makeTree(t, "docs/Proyecto-A", "src/proyecto-b", "src/otro/proyecto-c", "nada")
+
+	m, rec := newTestModel(location{Label: "Temporal", Path: root})
 	m = send(m, typeText("proyecto")...)
 	m = runSearch(t, m)
 
@@ -193,8 +253,8 @@ func TestSearchAndOpenWithArrows(t *testing.T) {
 		t.Fatalf("pantalla = %v, want resultados", m.screen)
 	}
 	var names []string
-	for _, p := range m.results {
-		names = append(names, filepath.Base(p))
+	for _, r := range m.results {
+		names = append(names, filepath.Base(r.Path))
 	}
 	slices.Sort(names)
 	if want := []string{"Proyecto-A", "proyecto-b", "proyecto-c"}; !slices.Equal(names, want) {
@@ -210,12 +270,12 @@ func TestSearchAndOpenWithArrows(t *testing.T) {
 	}
 	m = send(m, keys("up")...)
 	m = send(m, keys("enter")...)
-	if len(*opened) != 1 || (*opened)[0] != m.results[1] {
-		t.Errorf("Enter abrió %v, want [%s]", *opened, m.results[1])
+	if want := []string{"explorer:" + m.results[1].Path}; !slices.Equal(rec.calls, want) {
+		t.Errorf("Enter: acciones = %v, want %v", rec.calls, want)
 	}
 	m = send(m, keys("home", "right")...) // → también abre
-	if len(*opened) != 2 || (*opened)[1] != m.results[0] {
-		t.Errorf("→ abrió %v, want el primer resultado", *opened)
+	if len(rec.calls) != 2 || rec.calls[1] != "explorer:"+m.results[0].Path {
+		t.Errorf("→: acciones = %v, want el primer resultado", rec.calls)
 	}
 
 	m = send(m, keys("left")...)
@@ -225,12 +285,139 @@ func TestSearchAndOpenWithArrows(t *testing.T) {
 	}
 }
 
+func TestProjectsWithoutTerm(t *testing.T) {
+	root := makeTree(t, "web/src", "notas")
+	if err := os.WriteFile(filepath.Join(root, "web", "package.json"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m, _ := newTestModel(location{Label: "Temporal", Path: root})
+	m = send(m, keys("down", "down", "right")...) // Tipo: Proyectos
+	m = runSearch(t, m)
+
+	if len(m.results) != 1 || filepath.Base(m.results[0].Path) != "web" || m.results[0].Project != "Node.js" {
+		t.Fatalf("resultados = %+v, want el proyecto web (Node.js)", m.results)
+	}
+	view := m.View().Content
+	for _, want := range []string{"1 proyecto encontrado", "Node.js", "Proyectos"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("la vista no contiene %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestActionKeys(t *testing.T) {
+	m, rec := newTestModel(testLocations...)
+	m = withResults(m, `C:\a\uno`, `C:\a\dos`)
+
+	m = send(m, keys("down", "c", "v", "t", "e")...)
+	want := []string{`copy:C:\a\dos`, `code:C:\a\dos`, `terminal:C:\a\dos`, `explorer:C:\a\dos`}
+	if !slices.Equal(rec.calls, want) {
+		t.Errorf("acciones = %v, want %v", rec.calls, want)
+	}
+	if m.statusErr || !strings.Contains(m.status, "Abierto en el Explorador") {
+		t.Errorf("estado = %q", m.status)
+	}
+
+	m.acts.code = func(string) error { return errors.New("no está instalado") }
+	m = send(m, keys("v")...)
+	if !m.statusErr || !strings.Contains(m.status, "No se pudo abrir VS Code: no está instalado") {
+		t.Errorf("estado tras un error = %q (error: %v)", m.status, m.statusErr)
+	}
+}
+
+func TestCDFileWritesSelectionAndQuits(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "elegida.txt")
+	m, rec := newTestModel(testLocations...)
+	m.cdFile = file
+	m = withResults(m, `C:\a\uno`, `C:\a\Canción`)
+
+	if view := m.View().Content; !strings.Contains(view, "entrar en la carpeta") {
+		t.Errorf("la ayuda debería indicar que Enter entra en la carpeta:\n%s", view)
+	}
+
+	m = send(m, keys("down")...)
+	_, cmd := m.Update(key("enter"))
+	if cmd == nil {
+		t.Fatal("Enter no devolvió ningún comando")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Error("Enter debería salir del programa")
+	}
+	data, err := os.ReadFile(file)
+	if err != nil || string(data) != `C:\a\Canción` {
+		t.Errorf("archivo = %q (%v), want la carpeta elegida", data, err)
+	}
+	if len(rec.calls) != 0 {
+		t.Errorf("no debería abrir el Explorador: %v", rec.calls)
+	}
+}
+
+func TestDetailsKey(t *testing.T) {
+	root := makeTree(t, "datos")
+	if err := os.WriteFile(filepath.Join(root, "datos", "a.bin"), make([]byte, 2048), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := newTestModel(testLocations...)
+	m = withResults(m, filepath.Join(root, "datos"))
+
+	next, cmd := m.Update(key("d"))
+	m = next.(model)
+	if !strings.Contains(m.status, "Calculando") || cmd == nil {
+		t.Fatalf("d: estado = %q, sin comando = %v", m.status, cmd == nil)
+	}
+	m = send(m, cmd())
+	if !strings.Contains(m.status, "datos: 2.0 KB en 1 archivo · modificada el ") {
+		t.Errorf("estado = %q", m.status)
+	}
+
+	before := m.status
+	m = send(m, detailsMsg{gen: m.detailsGen - 1, path: "vieja", err: errors.New("vieja")})
+	if m.status != before {
+		t.Errorf("un cálculo anterior no debería cambiar el estado: %q", m.status)
+	}
+}
+
+func TestApplyOptions(t *testing.T) {
+	root := makeTree(t, "docs/Informe-final", "otros")
+
+	// Una carpeta que no está en la lista se añade al principio y se elige.
+	m, _ := newTestModel(testLocations...)
+	m = m.apply(Options{Root: root, Hidden: true})
+	if m.locIndex != 0 || m.locations[0].Path != root || m.locations[0].Label != "Carpeta elegida" || len(m.locations) != 4 {
+		t.Errorf("ubicaciones = %+v (índice %d), want la carpeta elegida primero", m.locations, m.locIndex)
+	}
+	if !m.hidden || m.screen != screenForm {
+		t.Errorf("ocultas = %v, pantalla = %v; want ocultas y el formulario (no hay término)", m.hidden, m.screen)
+	}
+
+	// Una carpeta que ya está en la lista se elige sin repetirla.
+	m, _ = newTestModel(testLocations...)
+	m = m.apply(Options{Root: `C:\dos\`})
+	if m.locIndex != 1 || len(m.locations) != 3 {
+		t.Errorf("índice = %d, ubicaciones = %d; want 1 y 3", m.locIndex, len(m.locations))
+	}
+
+	// Con término, la búsqueda empieza al abrir; un periodo que no está en
+	// la lista se añade como opción.
+	m, _ = newTestModel(location{Label: "Temporal", Path: root})
+	m = m.apply(Options{Term: "informe", Modified: "3d"})
+	if m.dates[m.dateIndex].value != "3d" {
+		t.Errorf("fecha = %+v, want 3d", m.dates[m.dateIndex])
+	}
+	m = drain(t, m, m.initCmd)
+	if len(m.results) != 1 || filepath.Base(m.results[0].Path) != "Informe-final" {
+		t.Errorf("resultados = %+v, want Informe-final", m.results)
+	}
+	if len(dateOptions) != 5 {
+		t.Errorf("las opciones de fecha por defecto no deberían cambiar: %+v", dateOptions)
+	}
+}
+
 func TestResultsScrolling(t *testing.T) {
 	m, _ := newTestModel(testLocations...)
-	m = send(m, tea.WindowSizeMsg{Width: 80, Height: 8}) // 2 filas de lista
-	m.screen, m.searching, m.gen = screenResults, true, 1
-	paths := []string{`C:\a\uno`, `C:\a\dos`, `C:\a\tres`, `C:\a\cuatro`, `C:\a\cinco`}
-	m = send(m, resultsMsg{gen: 1, paths: paths, done: true})
+	m = send(m, tea.WindowSizeMsg{Width: 80, Height: 9}) // 2 filas de lista
+	m = withResults(m, `C:\a\uno`, `C:\a\dos`, `C:\a\tres`, `C:\a\cuatro`, `C:\a\cinco`)
 
 	m = send(m, keys("down", "down", "down")...)
 	if m.cursor != 3 || m.offset != 2 {
@@ -253,7 +440,7 @@ func TestResultsScrolling(t *testing.T) {
 func TestStaleResultsAreIgnored(t *testing.T) {
 	m, _ := newTestModel(testLocations...)
 	m.screen, m.searching, m.gen = screenResults, true, 2
-	m = send(m, resultsMsg{gen: 1, paths: []string{`C:\vieja`}, done: true})
+	m = send(m, resultsMsg{gen: 1, results: []search.Result{{Path: `C:\vieja`}}, done: true})
 	if len(m.results) != 0 || !m.searching {
 		t.Errorf("un lote de otra búsqueda no debería afectar a la actual: %+v", m.results)
 	}
@@ -266,7 +453,7 @@ func TestFormView(t *testing.T) {
 	if !view.AltScreen {
 		t.Error("la interfaz debería usar la pantalla alternativa")
 	}
-	for _, want := range []string{"Buscar", "Ubicación", "Dos", `C:\dos`, "Ocultas", "Enter", "buscar"} {
+	for _, want := range []string{"Buscar", "Ubicación", "Dos", `C:\dos`, "Tipo", "Carpetas", "Modificada", "Cualquiera", "Ocultas", "Enter", "buscar"} {
 		if !strings.Contains(view.Content, want) {
 			t.Errorf("la vista no contiene %q:\n%s", want, view.Content)
 		}

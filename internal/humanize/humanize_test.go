@@ -27,3 +27,25 @@ func TestCount(t *testing.T) {
 		}
 	}
 }
+
+func TestBytes(t *testing.T) {
+	tests := []struct {
+		n    int64
+		want string
+	}{
+		{0, "0 bytes"},
+		{1, "1 byte"},
+		{1023, "1,023 bytes"},
+		{1024, "1.0 KB"},
+		{1536, "1.5 KB"},
+		{10 << 20, "10.0 MB"},
+		{150 << 20, "150 MB"},
+		{3584 << 20, "3.5 GB"},
+		{2 << 40, "2.0 TB"},
+	}
+	for _, tt := range tests {
+		if got := Bytes(tt.n); got != tt.want {
+			t.Errorf("Bytes(%d) = %q, want %q", tt.n, got, tt.want)
+		}
+	}
+}

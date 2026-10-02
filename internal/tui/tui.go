@@ -5,6 +5,9 @@ package tui
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,16 +16,31 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/AnthonyCZ6/fast-folder-cli/internal/explorer"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/humanize"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/launch"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/period"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
 
-// Run abre la interfaz interactiva y bloquea hasta que el usuario sale.
-func Run(version string) error {
-	m := newModel(version, defaultLocations(), explorer.Open)
+// Options configura el estado inicial del modo interactivo.
+type Options struct {
+	Term     string // búsqueda inicial
+	Root     string // ubicación inicial (ruta ya resuelta); vacía: la primera
+	Hidden   bool   // incluir las carpetas ocultas y de sistema
+	Projects bool   // buscar proyectos en lugar de carpetas
+	Modified string // periodo de modificación, como en --modified
+	CDFile   string // si no está vacío, Enter escribe aquí la carpeta elegida y sale (fcd)
+}
+
+// Run abre la interfaz interactiva y bloquea hasta que el usuario sale. Si
+// opts incluye un término, proyectos o una fecha, la búsqueda empieza al abrir.
+func Run(version string, opts Options) error {
+	m := newModel(version, defaultLocations(), defaultActions())
+	m = m.apply(opts)
 	final, err := tea.NewProgram(m).Run()
 	if fm, ok := final.(model); ok {
 		fm.cancelSearch()
+		fm.cancelDetails()
 	}
 	return err
 }
@@ -40,9 +58,43 @@ type field int
 const (
 	fieldTerm field = iota
 	fieldLocation
+	fieldKind
+	fieldDate
 	fieldHidden
 	fieldCount
 )
+
+// dateOption es una opción del campo Fecha.
+type dateOption struct {
+	label string
+	value string // como en --modified; vacío: cualquier fecha
+}
+
+var dateOptions = []dateOption{
+	{"Cualquiera", ""},
+	{"Hoy", "hoy"},
+	{"Ayer", "ayer"},
+	{"Últimos 7 días", "semana"},
+	{"Últimos 30 días", "mes"},
+}
+
+// actions agrupa lo que se puede hacer con una carpeta de los resultados. En
+// las pruebas se reemplazan por funciones que solo registran la llamada.
+type actions struct {
+	explorer func(string) error
+	code     func(string) error
+	terminal func(string) error
+	copyPath func(string) error
+}
+
+func defaultActions() actions {
+	return actions{
+		explorer: launch.Explorer,
+		code:     launch.VSCode,
+		terminal: launch.Terminal,
+		copyPath: launch.CopyPath,
+	}
+}
 
 // Estilos. Se usan los 16 colores básicos para respetar el tema de la terminal
 // y funcionar también en la consola clásica de Windows.
@@ -61,45 +113,65 @@ var (
 
 // resultsMsg entrega un lote de carpetas encontradas por la búsqueda gen.
 type resultsMsg struct {
-	gen   int
-	paths []string
-	done  bool
+	gen     int
+	results []search.Result
+	done    bool
+}
+
+// detailsMsg trae el tamaño y la fecha de una carpeta, calculados en segundo
+// plano al pulsar d.
+type detailsMsg struct {
+	gen  int
+	path string
+	info search.SizeInfo
+	mod  time.Time
+	err  error
 }
 
 type model struct {
 	version       string
 	width, height int
 	screen        screen
-	open          func(string) error // abre una carpeta; reemplazable en pruebas
+	acts          actions
+	cdFile        string  // modo fcd: archivo donde se escribe la carpeta elegida
+	initCmd       tea.Cmd // comando de la búsqueda iniciada al abrir
 
 	// Formulario.
 	focus     field
 	input     textinput.Model
 	locations []location
 	locIndex  int
+	projects  bool
+	dates     []dateOption
+	dateIndex int
 	hidden    bool
 	formErr   string
 
 	// Resultados.
-	gen       int // identifica la búsqueda en curso para descartar lotes viejos
-	pending   <-chan string
-	cancel    context.CancelFunc
-	stats     *search.Stats
-	term      string
-	root      string
-	results   []string
-	cursor    int
-	offset    int
-	searching bool
-	started   time.Time
-	elapsed   time.Duration
-	spinner   spinner.Model
-	ticking   bool
-	status    string
-	statusErr bool
+	gen            int // identifica la búsqueda en curso para descartar lotes viejos
+	pending        <-chan search.Result
+	cancel         context.CancelFunc
+	stats          *search.Stats
+	desc           string // qué se busca, para la cabecera
+	root           string
+	searchProjects bool // la búsqueda en curso es de proyectos
+	results        []search.Result
+	cursor         int
+	offset         int
+	searching      bool
+	started        time.Time
+	elapsed        time.Duration
+	spinner        spinner.Model
+	ticking        bool
+	status         string
+	statusErr      bool
+
+	// Tamaño y fecha de la carpeta seleccionada (tecla d).
+	detailsGen    int
+	detailsCancel context.CancelFunc
 }
 
-func newModel(version string, locations []location, open func(string) error) model {
+func newModel(version string, locations []location, acts actions) model {
 	in := textinput.New()
 	in.Prompt = ""
 	in.Placeholder = "nombre o parte del nombre (ej. proyecto, tesis*)"
@@ -110,15 +182,66 @@ func newModel(version string, locations []location, open func(string) error) mod
 		version:   version,
 		width:     80,
 		height:    24,
-		open:      open,
+		acts:      acts,
 		input:     in,
 		locations: locations,
+		dates:     dateOptions,
 		spinner:   spinner.New(spinner.WithSpinner(spinner.Line), spinner.WithStyle(styleFocus)),
 	}
 }
 
+// apply aplica las opciones iniciales y, si hay algo que buscar, empieza la
+// búsqueda.
+func (m model) apply(opts Options) model {
+	m.input.SetValue(opts.Term)
+	m.input.CursorEnd()
+	m.hidden = opts.Hidden
+	m.projects = opts.Projects
+	m.cdFile = opts.CDFile
+
+	if opts.Root != "" {
+		m.locIndex = -1
+		for i, loc := range m.locations {
+			if samePath(loc.Path, opts.Root) {
+				m.locIndex = i
+				break
+			}
+		}
+		if m.locIndex < 0 {
+			chosen := location{Label: "Carpeta elegida", Path: opts.Root}
+			m.locations = append([]location{chosen}, m.locations...)
+			m.locIndex = 0
+		}
+	}
+
+	if opts.Modified != "" {
+		m.dateIndex = -1
+		for i, d := range m.dates {
+			if d.value == strings.ToLower(opts.Modified) {
+				m.dateIndex = i
+				break
+			}
+		}
+		if m.dateIndex < 0 {
+			m.dates = append(append([]dateOption(nil), m.dates...), dateOption{opts.Modified, opts.Modified})
+			m.dateIndex = len(m.dates) - 1
+		}
+	}
+
+	if opts.Term != "" || opts.Projects || opts.Modified != "" {
+		next, cmd := m.startSearch()
+		m = next.(model)
+		m.initCmd = cmd
+	}
+	return m
+}
+
+func samePath(a, b string) bool {
+	return strings.EqualFold(strings.TrimRight(a, `\/`), strings.TrimRight(b, `\/`))
+}
+
 func (m model) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(textinput.Blink, m.initCmd)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -132,13 +255,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.gen != m.gen {
 			return m, nil // lote de una búsqueda anterior ya cancelada
 		}
-		m.results = append(m.results, msg.paths...)
+		m.results = append(m.results, msg.results...)
 		if msg.done {
 			m.searching = false
 			m.elapsed = time.Since(m.started)
 			return m, nil
 		}
 		return m, waitForResults(msg.gen, m.pending)
+
+	case detailsMsg:
+		if msg.gen != m.detailsGen {
+			return m, nil
+		}
+		m.showDetails(msg)
+		return m, nil
 
 	case spinner.TickMsg:
 		if !m.searching {
@@ -152,6 +282,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			m.cancelSearch()
+			m.cancelDetails()
 			return m, tea.Quit
 		}
 		if m.screen == screenForm {
@@ -189,6 +320,13 @@ func (m model) updateForm(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.locIndex = (m.locIndex + step + n) % n
 			}
 			return m, nil
+		case fieldKind:
+			m.projects = !m.projects
+			return m, nil
+		case fieldDate:
+			n := len(m.dates)
+			m.dateIndex = (m.dateIndex + step + n) % n
+			return m, nil
 		case fieldHidden:
 			m.hidden = !m.hidden
 			return m, nil
@@ -221,14 +359,26 @@ func (m model) setFocus(f field) (tea.Model, tea.Cmd) {
 
 func (m model) startSearch() (tea.Model, tea.Cmd) {
 	term := strings.TrimSpace(m.input.Value())
-	if term == "" {
-		m.formErr = "Escribe el nombre (o parte del nombre) de la carpeta que buscas."
+	date := m.dates[m.dateIndex]
+	if term == "" && !m.projects && date.value == "" {
+		m.formErr = "Escribe el nombre (o parte del nombre) de la carpeta que buscas, o elige Proyectos o una fecha."
 		return m.setFocus(fieldTerm)
 	}
-	matcher, err := search.NewMatcher(term)
-	if err != nil {
-		m.formErr = err.Error()
-		return m.setFocus(fieldTerm)
+	var matcher *search.Matcher
+	if term != "" {
+		var err error
+		if matcher, err = search.NewMatcher(term); err != nil {
+			m.formErr = err.Error()
+			return m.setFocus(fieldTerm)
+		}
+	}
+	var when period.Range
+	if date.value != "" {
+		var err error
+		if when, err = period.Parse(date.value, time.Now()); err != nil {
+			m.formErr = err.Error()
+			return m.setFocus(fieldDate)
+		}
 	}
 	if len(m.locations) == 0 {
 		m.formErr = "No hay ubicaciones disponibles para buscar."
@@ -239,17 +389,21 @@ func (m model) startSearch() (tea.Model, tea.Cmd) {
 	ctx, cancel := context.WithCancel(context.Background())
 	loc := m.locations[m.locIndex]
 	ch, stats := search.Start(ctx, search.Options{
-		Root:          loc.Path,
-		Matcher:       matcher,
-		IncludeHidden: m.hidden,
+		Root:           loc.Path,
+		Matcher:        matcher,
+		IncludeHidden:  m.hidden,
+		Projects:       m.projects,
+		ModifiedAfter:  when.After,
+		ModifiedBefore: when.Before,
 	})
 
 	m.gen++
 	m.pending = ch
 	m.cancel = cancel
 	m.stats = stats
-	m.term = term
+	m.desc = describe(term, m.projects, when)
 	m.root = loc.Path
+	m.searchProjects = m.projects
 	m.results = nil
 	m.cursor, m.offset = 0, 0
 	m.searching = true
@@ -267,6 +421,29 @@ func (m model) startSearch() (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// describe resume lo que se busca para la cabecera de los resultados.
+func describe(term string, projects bool, when period.Range) string {
+	var desc string
+	switch {
+	case projects && term != "":
+		desc = `Proyectos "` + term + `"`
+	case projects:
+		desc = "Proyectos"
+	case term != "":
+		desc = `"` + term + `"`
+	default:
+		desc = "Carpetas"
+	}
+	if when.Label != "" {
+		adjective := " modificadas "
+		if projects {
+			adjective = " modificados "
+		}
+		desc += adjective + when.Label
+	}
+	return desc
+}
+
 func (m *model) cancelSearch() {
 	if m.cancel != nil {
 		m.cancel()
@@ -274,28 +451,35 @@ func (m *model) cancelSearch() {
 	}
 }
 
+func (m *model) cancelDetails() {
+	if m.detailsCancel != nil {
+		m.detailsCancel()
+		m.detailsCancel = nil
+	}
+}
+
 // waitForResults espera la siguiente carpeta encontrada y agrupa las que
 // lleguen en los 30 ms siguientes, para no redibujar la pantalla por cada una.
-func waitForResults(gen int, ch <-chan string) tea.Cmd {
+func waitForResults(gen int, ch <-chan search.Result) tea.Cmd {
 	return func() tea.Msg {
-		path, ok := <-ch
+		r, ok := <-ch
 		if !ok {
 			return resultsMsg{gen: gen, done: true}
 		}
-		batch := []string{path}
+		batch := []search.Result{r}
 		timeout := time.After(30 * time.Millisecond)
 		for len(batch) < 500 {
 			select {
-			case path, ok := <-ch:
+			case r, ok := <-ch:
 				if !ok {
-					return resultsMsg{gen: gen, paths: batch, done: true}
+					return resultsMsg{gen: gen, results: batch, done: true}
 				}
-				batch = append(batch, path)
+				batch = append(batch, r)
 			case <-timeout:
-				return resultsMsg{gen: gen, paths: batch}
+				return resultsMsg{gen: gen, results: batch}
 			}
 		}
-		return resultsMsg{gen: gen, paths: batch}
+		return resultsMsg{gen: gen, results: batch}
 	}
 }
 
@@ -306,6 +490,7 @@ func (m model) updateResults(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "q":
 		m.cancelSearch()
+		m.cancelDetails()
 		return m, tea.Quit
 	case "left", "backspace":
 		m.cancelSearch()
@@ -325,17 +510,101 @@ func (m model) updateResults(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "end":
 		m.moveCursor(len(m.results))
 	case "enter", "right":
-		if len(m.results) == 0 {
-			return m, nil
-		}
-		path := m.results[m.cursor]
-		if err := m.open(path); err != nil {
-			m.status, m.statusErr = "No se pudo abrir el Explorador: "+err.Error(), true
-		} else {
-			m.status, m.statusErr = "Abierto en el Explorador: "+path, false
-		}
+		return m.choose()
+	case "e":
+		return m.act(m.acts.explorer, "Abierto en el Explorador: ", "No se pudo abrir el Explorador: ")
+	case "c":
+		return m.act(m.acts.copyPath, "Ruta copiada: ", "No se pudo copiar la ruta: ")
+	case "v":
+		return m.act(m.acts.code, "Abierto en VS Code: ", "No se pudo abrir VS Code: ")
+	case "t":
+		return m.act(m.acts.terminal, "Terminal abierta en ", "No se pudo abrir la terminal: ")
+	case "d":
+		return m.requestDetails()
 	}
 	return m, nil
+}
+
+// selected devuelve la ruta de la carpeta seleccionada, si hay resultados.
+func (m model) selected() (string, bool) {
+	if len(m.results) == 0 {
+		return "", false
+	}
+	return m.results[m.cursor].Path, true
+}
+
+// choose ejecuta la acción principal sobre la carpeta seleccionada: en el modo
+// fcd, guardarla y salir para que el script entre en ella; si no, abrirla en
+// el Explorador.
+func (m model) choose() (tea.Model, tea.Cmd) {
+	path, ok := m.selected()
+	if !ok {
+		return m, nil
+	}
+	if m.cdFile == "" {
+		return m.act(m.acts.explorer, "Abierto en el Explorador: ", "No se pudo abrir el Explorador: ")
+	}
+	if err := os.WriteFile(m.cdFile, []byte(path), 0o600); err != nil {
+		m.status, m.statusErr = "No se pudo guardar la carpeta elegida: "+err.Error(), true
+		return m, nil
+	}
+	m.cancelSearch()
+	m.cancelDetails()
+	return m, tea.Quit
+}
+
+// act ejecuta fn con la carpeta seleccionada y muestra el resultado en la
+// línea de estado.
+func (m model) act(fn func(string) error, done, failed string) (tea.Model, tea.Cmd) {
+	path, ok := m.selected()
+	if !ok {
+		return m, nil
+	}
+	if err := fn(path); err != nil {
+		m.status, m.statusErr = failed+err.Error(), true
+	} else {
+		m.status, m.statusErr = done+path, false
+	}
+	return m, nil
+}
+
+// requestDetails empieza a calcular en segundo plano el tamaño de la carpeta
+// seleccionada. Si había otro cálculo en curso, se cancela.
+func (m model) requestDetails() (tea.Model, tea.Cmd) {
+	path, ok := m.selected()
+	if !ok {
+		return m, nil
+	}
+	m.cancelDetails()
+	ctx, cancel := context.WithCancel(context.Background())
+	m.detailsCancel = cancel
+	m.detailsGen++
+	m.status, m.statusErr = "Calculando el tamaño de "+filepath.Base(path)+"...", false
+
+	gen := m.detailsGen
+	return m, func() tea.Msg {
+		info, err := os.Stat(path)
+		if err != nil {
+			return detailsMsg{gen: gen, path: path, err: err}
+		}
+		return detailsMsg{gen: gen, path: path, info: search.Size(ctx, path), mod: info.ModTime()}
+	}
+}
+
+func (m *model) showDetails(msg detailsMsg) {
+	name := filepath.Base(msg.path)
+	if msg.err != nil {
+		m.status, m.statusErr = "No se pudo leer "+name+": "+msg.err.Error(), true
+		return
+	}
+	status := fmt.Sprintf("%s: %s en %s · modificada el %s", name,
+		humanize.Bytes(msg.info.Bytes),
+		humanize.Count(msg.info.Files, "archivo", "archivos"),
+		msg.mod.Format("02/01/2006 15:04"))
+	if msg.info.Denied > 0 {
+		status += " · " + humanize.Int(msg.info.Denied) + " carpetas sin acceso"
+	}
+	m.status, m.statusErr = status, false
 }
 
 func (m *model) moveCursor(delta int) {
@@ -352,7 +621,7 @@ func (m *model) moveCursor(delta int) {
 }
 
 // listHeight es el número de filas disponibles para la lista de resultados:
-// el alto total menos la cabecera (2 líneas) y el pie (4 líneas).
+// el alto total menos la cabecera (2 líneas) y el pie (5 líneas).
 func (m model) listHeight() int {
-	return max(m.height-6, 1)
+	return max(m.height-7, 1)
 }

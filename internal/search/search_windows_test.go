@@ -3,6 +3,8 @@
 package search
 
 import (
+	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -50,5 +52,21 @@ func TestSearchReportsButDoesNotFollowJunctions(t *testing.T) {
 	want := []string{"real/enlace-objetivo", "real/objetivo"}
 	if !slices.Equal(got, want) {
 		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestSizeDoesNotFollowJunctions(t *testing.T) {
+	root := makeTree(t, "datos")
+	if err := os.WriteFile(filepath.Join(root, "datos", "archivo.bin"), make([]byte, 100), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "enlace")
+	if out, err := exec.Command("cmd", "/c", "mklink", "/J", link, filepath.Join(root, "datos")).CombinedOutput(); err != nil {
+		t.Skipf("no se pudo crear la unión: %v: %s", err, out)
+	}
+
+	info := Size(context.Background(), root)
+	if info.Bytes != 100 || info.Files != 1 {
+		t.Errorf("Size = %+v, want 100 bytes en 1 archivo (sin contar la unión)", info)
 	}
 }

@@ -2,3 +2,6 @@
 * text=auto eol=lf
 
 *.exe binary
+
+# cmd.exe necesita finales CRLF para leer bien los archivos por lotes.
+*.cmd text eol=crlf
