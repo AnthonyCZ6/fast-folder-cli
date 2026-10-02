@@ -27,7 +27,7 @@ func TestMatcher(t *testing.T) {
 		{"cafe*", "Café-Internet", true},
 		{"cafe", "Cafe\u0301", true}, // forma descompuesta
 		{"tesis", "Tésis", true},
-		{"cancion", "Canciones", false},
+		{"cancion", "Canasta", false},
 	}
 	for _, tt := range tests {
 		m, err := NewMatcher(tt.term)

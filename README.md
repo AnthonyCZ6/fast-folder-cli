@@ -27,6 +27,18 @@ Analizadas : 27,972 carpetas
 Tiempo     : 854 ms
 ```
 
+## ✨ Lo que lo hace diferente
+
+| | |
+| --- | --- |
+| 🔤 **Sin acentos** | `cancion` encuentra `Canción`, `ano` encuentra `Año 2024`: escribe rápido, sin preocuparte por las tildes. |
+| 📂 **Entra en la carpeta** | `fcd tesis` busca, eliges con las flechas y la terminal **queda dentro** de la carpeta. |
+| 🧑‍💻 **Tus proyectos** | `fast --projects` lista todos tus proyectos (Git, Node.js, Python, Go, .NET, Java, Unity...) aunque estén regados por Descargas, el Escritorio o Documentos. |
+| 📅 **"¿En qué trabajé ayer?"** | `fast -m ayer` muestra las carpetas modificadas ayer; también `hoy`, `semana`, `mes`... |
+| 💾 **¿Qué ocupa tanto?** | `fast node_modules --size` dice cuánto pesa cada carpeta, de mayor a menor. |
+| 🖱️ **Desde el Explorador** | Clic derecho en una carpeta → **Buscar carpetas aquí**. |
+| ⚡ **Acciones rápidas** | En el modo interactivo: copia la ruta, ábrela en VS Code o en una terminal con una tecla. |
+
 ---
 
 ## 📌 El problema
@@ -48,13 +60,15 @@ experiencia frustrante:
 | Característica | Detalle |
 | --- | --- |
 | 🚀 **Recorrido concurrente** | Varias goroutines leen directorios en paralelo con un límite de concurrencia (4 × núcleos). |
-| 🔤 **Búsqueda flexible** | Coincidencia parcial sin distinguir mayúsculas, o patrones con comodines `*`, `?` y `[ ]`. |
+| 🔤 **Búsqueda flexible** | Coincidencia parcial sin distinguir mayúsculas ni acentos, o patrones con comodines `*`, `?` y `[ ]`. |
+| 🔎 **Filtros** | Por tipo (`--projects`), por fecha de modificación (`-m hoy`) y con el tamaño de cada carpeta (`--size`). |
 | 🌐 **Variables de entorno** | Entiende `%APPDATA%`, `%LOCALAPPDATA%`, `%USERPROFILE%`, `%PROGRAMDATA%`, `~` y `D:` incluso desde PowerShell. |
 | 🛡️ **Tolerante a errores** | Las carpetas sin permisos se omiten y se contabilizan; la búsqueda nunca se detiene. |
 | 🔁 **Seguro con enlaces** | Las uniones (*junctions*) y enlaces simbólicos se reportan pero no se recorren, evitando ciclos infinitos. |
 | 👻 **Ocultas y de sistema** | Se ignoran por defecto (más rápido y menos ruido); `--all` las incluye. |
-| 📂 **Integración con el Explorador** | `--open` abre la primera coincidencia en cuanto se encuentra. |
+| 📂 **Integración con el Explorador** | `--open` abre la primera coincidencia en cuanto se encuentra, y el menú contextual del Explorador abre la búsqueda en cualquier carpeta. |
 | ⌨️ **Modo interactivo** | Escribe `fast` sin argumentos y busca, elige ubicación y abre carpetas usando solo las flechas. |
+| 🚪 **`fcd`** | Busca una carpeta y deja la terminal (PowerShell o Símbolo del sistema) dentro de ella. |
 | 📦 **Un solo ejecutable** | Sin instalar nada más: un único `.exe` para x64 o ARM64. |
 
 ## 📊 Rendimiento
@@ -96,6 +110,10 @@ El asistente:
   de entradas.
 - Crea el atajo **`fast`** (opción marcada por defecto), para escribir `fast -n proyecto` en
   lugar de `fast-folder-cli -n proyecto`.
+- Instala el comando [**`fcd`**](#-entrar-en-una-carpeta-con-fcd) para buscar una carpeta y
+  entrar en ella.
+- Agrega **Buscar carpetas aquí** al [menú contextual del Explorador](#️-menú-contextual-del-explorador)
+  (opción marcada por defecto).
 - Se registra en **Configuración → Aplicaciones → Aplicaciones instaladas**, desde donde se
   desinstala. Para actualizar, basta con ejecutar el asistente de una versión nueva.
 
@@ -116,15 +134,18 @@ Eso es todo: ya puedes usar `fast-folder-cli` en esa misma ventana. El
 [script](install.ps1):
 
 - Detecta si tu equipo es x64 o ARM64 y descarga el ejecutable de la última versión.
-- Comprueba su suma SHA-256 antes de instalarlo.
-- Lo copia en `%LOCALAPPDATA%\Programs\fast-folder-cli`, junto con el atajo **`fast`**, y
-  agrega esa carpeta al PATH de tu usuario, **sin permisos de administrador** y sin alterar
-  el resto del PATH.
+- Comprueba las sumas SHA-256 antes de instalar.
+- Lo copia en `%LOCALAPPDATA%\Programs\fast-folder-cli`, junto con el atajo **`fast`** y el
+  comando **`fcd`**, y agrega esa carpeta al PATH de tu usuario, **sin permisos de
+  administrador** y sin alterar el resto del PATH.
+- Agrega **Buscar carpetas aquí** al menú contextual del Explorador.
 
 | Para... | Ejecuta |
 | --- | --- |
 | **Actualizar** a la última versión | El mismo comando de instalación. |
 | Instalar una **versión concreta** | `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/AnthonyCZ6/fast-folder-cli/main/install.ps1))) -Version v1.0.0` |
+| Instalar **sin el menú contextual** | `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/AnthonyCZ6/fast-folder-cli/main/install.ps1))) -NoContextMenu` |
+| Instalar **sin conexión** (con los archivos del release ya descargados en una carpeta) | `.\install.ps1 -SourceDir C:\Descargas\fast-folder-cli` |
 | **Desinstalar** | `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/AnthonyCZ6/fast-folder-cli/main/install.ps1))) -Uninstall` |
 
 ### Con Go
@@ -197,8 +218,9 @@ GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o fast-folder-cli
 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o fast-folder-cli-arm64.exe .
 ```
 
-> 💡 **Atajo `fast`:** el asistente y el script de instalación lo crean automáticamente. Si
-> instalas con Go o a mano, copia `fast-folder-cli.exe` como `fast.exe` en la misma carpeta.
+> 💡 **Atajo `fast` y comando `fcd`:** el asistente y el script de instalación los crean
+> automáticamente. Si instalas con Go o a mano, copia `fast-folder-cli.exe` como `fast.exe`
+> y [`shell/fcd.ps1`](shell/fcd.ps1) y [`shell/fcd.cmd`](shell/fcd.cmd) en la misma carpeta.
 
 ### Si Windows bloquea el programa
 
@@ -245,48 +267,93 @@ fast
 y se abre una pantalla de búsqueda que se maneja sin escribir comandos:
 
 ```text
- fast-folder-cli   v1.1.0
+ fast-folder-cli   v1.2.0
 
- ► Buscar     proyecto
-   Ubicación  ◄ Documentos ►  C:\Users\usuario\Documents
-   Ocultas      No            carpetas ocultas y de sistema
+ ► Buscar     cancion
+   Ubicación    Documentos           C:\Users\usuario\Documents
+   Tipo         Carpetas             cualquier carpeta cuyo nombre coincida
+   Modificada   Cualquiera           fecha de modificación de la carpeta
+   Ocultas      No                   carpetas ocultas y de sistema
 
  ↑↓ moverse   ←→ cambiar opción   Enter buscar   Esc salir
 ```
 
-1. Escribe el nombre (o parte del nombre) de la carpeta.
+1. Escribe el nombre (o parte del nombre) de la carpeta. No hace falta poner acentos.
 2. Con **↓** baja a **Ubicación** y elige dónde buscar con **← →**: tu perfil, Escritorio,
    Documentos, Descargas, la carpeta actual, AppData, ProgramData o cualquier unidad (C:, D:...).
-3. Con **↓** baja a **Ocultas** y actívalas con **← →** si también quieres buscar en
-   carpetas ocultas y de sistema.
-4. Pulsa **Enter**. Los resultados aparecen conforme se encuentran:
+3. En **Tipo** elige **Proyectos** para buscar solo [carpetas de proyectos](#buscar-proyectos);
+   así el nombre es opcional y, sin él, aparecen todos.
+4. En **Modificada** elige **Hoy**, **Ayer**, **Últimos 7 días** o **Últimos 30 días** para
+   ver solo las carpetas modificadas en ese periodo.
+5. En **Ocultas** actívalas si también quieres buscar en carpetas ocultas y de sistema.
+6. Pulsa **Enter**. Los resultados aparecen conforme se encuentran:
 
 ```text
- fast-folder-cli   "proyecto" en C:\Users\usuario\Documents
+ fast-folder-cli   "cancion" en C:\Users\usuario\Documents
 
- ► Proyecto-Final          C:\Users\usuario\Documents
-   mi-proyecto             C:\Users\usuario\Documents\escuela
+ ► Canción final           C:\Users\usuario\Documents\música
+   Canciones-2024          C:\Users\usuario\Documents\escuela
 
  2 carpetas encontradas · 1,284 analizadas · 1/2 · 38 ms
+
  ↑↓ moverse   Enter abrir en el Explorador   ← nueva búsqueda   Esc salir
+ c copiar ruta   v VS Code   t terminal   d tamaño y fecha
 ```
 
 | Tecla | En la búsqueda | En los resultados |
 | --- | --- | --- |
 | <kbd>↑</kbd> <kbd>↓</kbd> | Cambiar de campo | Moverse por la lista (<kbd>RePág</kbd> <kbd>AvPág</kbd> <kbd>Inicio</kbd> <kbd>Fin</kbd> para saltar) |
-| <kbd>←</kbd> <kbd>→</kbd> | Cambiar la ubicación o las ocultas | <kbd>→</kbd> abre la carpeta · <kbd>←</kbd> vuelve a la búsqueda |
-| <kbd>Enter</kbd> | Buscar | Abrir la carpeta en el Explorador |
+| <kbd>←</kbd> <kbd>→</kbd> | Cambiar la opción del campo | <kbd>→</kbd> abre la carpeta · <kbd>←</kbd> vuelve a la búsqueda |
+| <kbd>Enter</kbd> | Buscar | Abrir la carpeta en el Explorador (con `fcd`, entrar en ella) |
+| <kbd>C</kbd> | | Copiar la ruta al portapapeles |
+| <kbd>V</kbd> | | Abrir la carpeta en Visual Studio Code |
+| <kbd>T</kbd> | | Abrir una terminal nueva en la carpeta |
+| <kbd>D</kbd> | | Mostrar cuánto ocupa y cuándo se modificó |
+| <kbd>E</kbd> | | Abrir la carpeta en el Explorador |
 | <kbd>Esc</kbd> | Salir | Salir |
+
+### 🚪 Entrar en una carpeta con `fcd`
+
+*Disponible desde la versión 1.2.0.* Un programa no puede cambiar la carpeta de la terminal
+que lo abrió, así que el asistente y el script de instalación agregan el comando **`fcd`**
+(para PowerShell y para el Símbolo del sistema), que sí puede:
+
+```powershell
+fcd tesis
+```
+
+Abre el modo interactivo con la búsqueda de `tesis`; al elegir una carpeta con
+<kbd>Enter</kbd>, la terminal queda dentro de ella. `fcd` acepta las mismas opciones que
+`fast-folder-cli`: `fcd -p D: proyecto`, `fcd --projects`, `fcd -m ayer`... Sin argumentos
+abre el formulario vacío.
+
+> Si PowerShell dice que *la ejecución de scripts está deshabilitada en este sistema*, `fcd`
+> no puede funcionar con la directiva de ejecución actual. Puedes permitir los scripts
+> locales solo para tu usuario con `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, o
+> usar `fcd` desde el Símbolo del sistema.
+
+### 🖱️ Menú contextual del Explorador
+
+*Disponible desde la versión 1.2.0.* Haz clic derecho en el fondo de una carpeta (o sobre
+una carpeta) y elige **Buscar carpetas aquí (fast-folder-cli)**: se abre el modo
+interactivo con esa carpeta como ubicación. En Windows 11 la opción está en **Mostrar más
+opciones** (o pulsando <kbd>Mayús</kbd> + <kbd>F10</kbd>).
+
+El asistente la agrega si dejas marcada su casilla y el script de instalación la agrega
+salvo que uses `-NoContextMenu`. Al desinstalar se quita. Por dentro ejecuta
+`fast-folder-cli --path "<carpeta>"`, que sin término abre el modo interactivo.
 
 ### Con comandos (para scripts)
 
 ```text
-fast-folder-cli -n <término> [-p <ruta>] [-a] [-o]
+fast-folder-cli -n <término> [-p <ruta>] [opciones]
 fast-folder-cli <término> [opciones]
+fast-folder-cli --projects [término] [opciones]
 ```
 
-Con argumentos, la herramienta funciona como un comando normal: imprime los resultados y
-termina, así que se puede usar en scripts y redirigir su salida.
+Con un término (o con `--projects` o `-m`), la herramienta funciona como un comando normal:
+imprime los resultados y termina, así que se puede usar en scripts y redirigir su salida.
+Si solo indicas opciones, como `fast -p D:`, abre el modo interactivo con ellas.
 
 > Si tienes otro programa llamado `fast` (por ejemplo, el medidor de velocidad de npm
 > `fast-cli`), el que aparezca primero en el PATH tendrá prioridad; el nombre completo
@@ -296,8 +363,11 @@ termina, así que se puede usar en scripts y redirigir su salida.
 
 | Corta | Larga | Descripción | Por defecto |
 | --- | --- | --- | --- |
-| `-n` | `--name` | Término o patrón a buscar en los nombres de carpeta. También puede indicarse como argumento posicional. | *(obligatorio)* |
+| `-n` | `--name` | Término o patrón a buscar en los nombres de carpeta. También puede indicarse como argumento posicional. | *(obligatorio, salvo con `--projects` o `-m`)* |
 | `-p` | `--path` | Carpeta raíz desde la que comienza la búsqueda. Admite variables de entorno. | `%USERPROFILE%` |
+| `-m` | `--modified` | Solo carpetas [modificadas](#filtrar-por-fecha-de-modificación) en ese periodo: `hoy`, `ayer`, `semana`, `mes`, `año`, un número de días (`3d`) o una fecha (`2026-09-01`). | cualquier fecha |
+| | `--projects` | Busca [carpetas de proyectos](#buscar-proyectos) en lugar de cualquier carpeta. | desactivado |
+| `-s` | `--size` | Calcula [cuánto ocupa](#cuánto-ocupa-cada-carpeta) cada carpeta encontrada y las ordena de mayor a menor. | desactivado |
 | `-a` | `--all` | Incluye carpetas ocultas y de sistema. | desactivado |
 | `-o` | `--open` | Abre la primera carpeta encontrada en el Explorador de Windows. | desactivado |
 | `-v` | `--version` | Muestra la versión instalada. | |
@@ -326,11 +396,99 @@ fast-folder-cli --name nvidia --path %PROGRAMDATA% --all
 
 # Guardar los resultados en un archivo
 fast-folder-cli -n node_modules -p C:\dev > resultados.txt
+
+# Sin acentos: encuentra "Canción", "canciones"...
+fast-folder-cli cancion
+
+# Todos tus proyectos, y los de Python modificados esta semana
+fast-folder-cli --projects
+fast-folder-cli --projects -m semana
+
+# Las carpetas de Documentos que tocaste ayer
+fast-folder-cli -m ayer -p %USERPROFILE%\Documents
+
+# Cuánto ocupa cada node_modules de C:\dev
+fast-folder-cli node_modules --size -p C:\dev
 ```
+
+### Buscar proyectos
+
+`--projects` (o **Tipo: Proyectos** en el modo interactivo) busca carpetas que contienen
+alguno de estos archivos o carpetas, y muestra el tipo junto a cada una:
+
+| Tipo | Se reconoce por |
+| --- | --- |
+| Go | `go.mod` |
+| Rust | `Cargo.toml` |
+| Node.js | `package.json` |
+| Python | `pyproject.toml`, `requirements.txt`, `setup.py`, `Pipfile` |
+| .NET | `*.sln`, `*.csproj` |
+| C/C++ | `CMakeLists.txt`, `*.vcxproj` |
+| Java / Kotlin | `pom.xml`, `build.gradle` / `build.gradle.kts` |
+| PHP, Ruby, Flutter | `composer.json`, `Gemfile`, `pubspec.yaml` |
+| Unity | `ProjectSettings` |
+| Git | `.git` (solo si no hay otro indicio) |
+
+```text
+> fast --projects -p C:\Users\usuario\Documents
+
+  [1] C:\Users\usuario\Documents\escuela\web  (Node.js)
+  [2] C:\Users\usuario\Documents\escuela\api  (Go, Python)
+  [3] C:\Users\usuario\Documents\juegos\plataformas  (Unity)
+```
+
+Con un término, solo aparecen los proyectos cuyo nombre coincide (`--projects api`). El
+interior de un proyecto no se recorre (`node_modules`, `bin`, `.git`...), lo que hace la
+búsqueda rápida; por eso un proyecto dentro de otro no aparece. La carpeta raíz de la
+búsqueda nunca cuenta como proyecto, para que un `package.json` suelto en tu carpeta
+personal no oculte todo lo demás.
+
+### Filtrar por fecha de modificación
+
+`-m` (o el campo **Modificada** del modo interactivo) deja solo las carpetas modificadas en
+un periodo. Se puede usar con o sin término:
+
+| Valor | Carpetas modificadas... |
+| --- | --- |
+| `hoy` | hoy |
+| `ayer` | ayer (no hoy) |
+| `semana` | en los últimos 7 días, incluido hoy |
+| `mes` | en los últimos 30 días |
+| `año` (o `ano`) | en los últimos 365 días |
+| `3d`, `15d`... | en ese número de días |
+| `2026-09-01` | desde esa fecha |
+
+Windows cambia la fecha de una carpeta cuando se crea, borra o renombra algo **directamente
+dentro de ella** (también al guardar archivos con muchos editores, que reemplazan el archivo
+al guardar), pero no al editar un archivo de una subcarpeta.
+
+### Cuánto ocupa cada carpeta
+
+`--size` suma el tamaño de los archivos de cada carpeta encontrada (incluidas sus
+subcarpetas ocultas, sin seguir enlaces) y las muestra ordenadas de mayor a menor, con el
+total al final:
+
+```text
+> fast node_modules --size -p C:\dev
+
+     1.2 GB  C:\dev\tienda\node_modules
+     350 MB  C:\dev\blog\node_modules
+      48 MB  C:\dev\api\node_modules
+
+────────────────────────────────────────────────────────────────
+Resultados : 3 carpetas encontradas
+Tamaño     : 1.6 GB en total (98,412 archivos)
+```
+
+Con `--size` no se busca dentro de las carpetas encontradas, para no contar dos veces los
+`node_modules` anidados. En el modo interactivo, la tecla <kbd>D</kbd> muestra el tamaño de
+la carpeta seleccionada.
 
 ### Reglas de coincidencia
 
-Las búsquedas **no distinguen mayúsculas de minúsculas**, igual que Windows.
+Las búsquedas **no distinguen mayúsculas de minúsculas**, igual que Windows, **ni acentos**:
+`cancion` encuentra `Canción`, `pinguino` encuentra `Pingüino` y `ano` encuentra `Año 2024`
+(la ñ se trata como n).
 
 | Término | Tipo | Coincide con | No coincide con |
 | --- | --- | --- | --- |
