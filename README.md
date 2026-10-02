@@ -77,6 +77,10 @@ del disco y de la caché del sistema de archivos: la segunda búsqueda suele ser
 
 Requiere Windows 10 u 11 de 64 bits (x64 o ARM64).
 
+> ⚠️ Si tu Windows 11 tiene **Smart App Control** activado, no podrás ejecutar
+> fast-folder-cli. Consulta [Si Windows bloquea el programa](#si-windows-bloquea-el-programa)
+> antes de instalar.
+
 ### 🧙 Asistente de instalación (recomendado)
 
 1. Descarga **[fast-folder-cli-setup.exe](https://github.com/AnthonyCZ6/fast-folder-cli/releases/latest/download/fast-folder-cli-setup.exe)**.
@@ -97,7 +101,8 @@ El asistente:
 
 > ⚠️ El asistente no está firmado digitalmente, así que la primera vez Windows SmartScreen
 > puede mostrar **"Windows protegió su PC"**: pulsa **Más información → Ejecutar de todas
-> formas**.
+> formas**. Si en cambio Windows bloquea el archivo sin darte esa opción, es Smart App
+> Control: consulta [Si Windows bloquea el programa](#si-windows-bloquea-el-programa).
 
 ### ⚡ Desde la terminal, con un solo comando
 
@@ -148,9 +153,11 @@ agrega al PATH.
 3. Agrega esa carpeta al PATH (siguiente apartado).
 
 > ⚠️ Los ejecutables no están firmados digitalmente, así que Windows SmartScreen o tu
-> antivirus pueden mostrar una advertencia la primera vez. Para comprobar que el archivo es
-> el original, compara `Get-FileHash .\fast-folder-cli.exe` con el valor de `checksums.txt`
-> publicado en la versión. El instalador de un solo comando hace esta comprobación por ti.
+> antivirus pueden mostrar una advertencia la primera vez, y Smart App Control los bloquea
+> (consulta [Si Windows bloquea el programa](#si-windows-bloquea-el-programa)). Para
+> comprobar que el archivo es el original, compara `Get-FileHash .\fast-folder-cli.exe` con
+> el valor de `checksums.txt` publicado en la versión. El instalador de un solo comando hace
+> esta comprobación por ti.
 
 #### Agregar al PATH de Windows
 
@@ -192,6 +199,32 @@ GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o fast-folder-cli
 
 > 💡 **Atajo `fast`:** el asistente y el script de instalación lo crean automáticamente. Si
 > instalas con Go o a mano, copia `fast-folder-cli.exe` como `fast.exe` en la misma carpeta.
+
+### Si Windows bloquea el programa
+
+Los ejecutables de fast-folder-cli todavía no están firmados digitalmente. Con **Smart App
+Control** activado, Windows 11 no deja ejecutar programas sin firma ni reputación, así que la
+instalación termina sin errores, pero al escribir `fast` aparece un error como este:
+
+```text
+Program 'fast-folder-cli.exe' failed to run: An Application Control policy has blocked this file
+```
+
+En Windows en español, el mensaje indica que una directiva de Control de aplicaciones bloqueó
+el archivo. Ocurre con cualquier método de instalación, incluso si lo compilas tú mismo.
+
+Para saber si Smart App Control está activado, abre **Seguridad de Windows → Control de
+aplicaciones y navegador → Configuración de Smart App Control**, o ejecuta en PowerShell:
+
+```powershell
+(Get-MpComputerStatus).SmartAppControlState   # On = bloquea; Eval u Off = no bloquea
+```
+
+A diferencia de SmartScreen, Smart App Control no ofrece **Ejecutar de todas formas** ni
+permite excepciones para un programa concreto. Mientras no haya versiones firmadas, la única
+forma de usar fast-folder-cli es desactivarlo. Antes de hacerlo, ten en cuenta que protege a
+todo el sistema y que, en algunas versiones de Windows 11, no se puede volver a activar sin
+reinstalar Windows.
 
 ---
 
@@ -457,12 +490,32 @@ instalador se probará con la última versión publicada.
 
 Distribuido bajo la licencia MIT. Consulta el archivo [LICENSE](LICENSE) para más detalles.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org)
+
+Los ejecutables para Windows (`fast-folder-cli-windows-amd64.exe`, `fast-folder-cli-windows-arm64.exe`
+y `fast-folder-cli-setup.exe`) se firmarán en GitHub Actions a partir del código de este
+repositorio ([`release.yml`](.github/workflows/release.yml)), y cada firma requerirá la
+aprobación manual del mantenedor.
+
+> ℹ️ La solicitud a SignPath Foundation está en trámite: las versiones publicadas hasta ahora
+> (v1.0.0 y v1.1.0) no están firmadas.
+
+- **Committers and reviewers:** [@AnthonyCZ6](https://github.com/AnthonyCZ6)
+- **Approvers:** [@AnthonyCZ6](https://github.com/AnthonyCZ6)
+
+**Privacy policy:** This program will not transfer any information to other networked systems
+unless specifically requested by the user or the person installing or operating it.
+
+fast-folder-cli solo lee los nombres de las carpetas de tu equipo y no se conecta a internet. El
+instalador de un solo comando descarga el ejecutable desde GitHub porque tú lo ejecutas.
+
 ## 📬 Contacto
 
 **Anthony** — autor y mantenedor
 
 - GitHub: [@AnthonyCZ6](https://github.com/AnthonyCZ6)
-- Correo: [20243ds055@utez.edu.mx](mailto:20243ds055@utez.edu.mx)
 - Reporta errores o propone mejoras en
   [Issues](https://github.com/AnthonyCZ6/fast-folder-cli/issues).
 

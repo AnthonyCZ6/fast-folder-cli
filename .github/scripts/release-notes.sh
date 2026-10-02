@@ -97,11 +97,15 @@ Renómbralo a `fast-folder-cli.exe` y agrégalo al PATH siguiendo
 
 ## 🔒 Verificación
 
-Los ejecutables no están firmados digitalmente, así que Windows SmartScreen puede mostrar "Windows protegió su PC" al abrir el asistente: pulsa **Más información → Ejecutar de todas formas**. El script de PowerShell comprueba la suma SHA-256 automáticamente; si descargas un archivo a mano, compáralo con `checksums.txt`:
+Los ejecutables no están firmados digitalmente, así que Windows SmartScreen puede mostrar "Windows protegió su PC" al abrir el asistente: pulsa **Más información → Ejecutar de todas formas**. Con Smart App Control activado (Windows 11), Windows bloquea los ejecutables sin esa opción: consulta [Si Windows bloquea el programa]({{REPO_URL}}#si-windows-bloquea-el-programa). El script de PowerShell comprueba la suma SHA-256 automáticamente; si descargas un archivo a mano, compáralo con `checksums.txt`:
 
 ```powershell
 Get-FileHash .\fast-folder-cli-windows-amd64.exe
 ```
+
+## 🔏 Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org). Consulta la [política de firma de código completa]({{REPO_URL}}#code-signing-policy).
 
 **Cambios completos**: {{CHANGES_URL}}
 EOF
