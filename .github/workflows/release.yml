@@ -81,9 +81,22 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             version="${GITHUB_REF_NAME#v}"
           else
-            version="dev-${GITHUB_SHA::7}"
+            version="0.0.0-dev.${GITHUB_SHA::7}"
           fi
           echo "Versión: $version"
+
+          # Nombre del producto y versión que Windows muestra en Propiedades →
+          # Detalles (SignPath los exige en los ejecutables firmados). go build
+          # incluye automáticamente los rsrc_windows_<arch>.syso generados.
+          go run github.com/tc-hib/go-winres@v0.3.3 simply \
+            --arch amd64,arm64 \
+            --manifest none \
+            --product-name fast-folder-cli \
+            --product-version "$version" \
+            --file-version "$version" \
+            --file-description "Búsqueda ultrarrápida de carpetas para Windows" \
+            --copyright "Copyright (c) 2026 Anthony" \
+            --original-filename fast-folder-cli.exe
 
           mkdir -p dist
           for arch in amd64 arm64; do
@@ -124,15 +137,34 @@ jobs:
           Start-Process $exe -Wait -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /CURRENTUSER /PORTABLE=1 /NOICONS /DIR=`"$env:RUNNER_TEMP\inno`""
           if (-not (Test-Path "$env:RUNNER_TEMP\inno\ISCC.exe")) { throw 'No se pudo instalar Inno Setup' }
 
-      - name: Compilar el asistente
+      - name: Calcular la version
         run: |
           if ($env:GITHUB_REF_TYPE -eq 'tag') {
             $version = $env:GITHUB_REF_NAME.TrimStart('v')
           } else {
             $version = "0.0.0-dev.$($env:GITHUB_SHA.Substring(0, 7))"
           }
-          & "$env:RUNNER_TEMP\inno\ISCC.exe" "/DAppVersion=$version" installer\fast-folder-cli.iss
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Comprobar los metadatos de los ejecutables
+        run: |
+          foreach ($exe in Get-ChildItem dist\*.exe) {
+            $info = $exe.VersionInfo
+            Write-Host "$($exe.Name): $($info.ProductName) $($info.ProductVersion) ($($info.FileVersionRaw))"
+            if ($info.ProductName -ne 'fast-folder-cli' -or $info.ProductVersion -ne $env:APP_VERSION) {
+              throw "Metadatos incorrectos en $($exe.Name)"
+            }
+          }
+
+      - name: Compilar el asistente
+        run: |
+          & "$env:RUNNER_TEMP\inno\ISCC.exe" "/DAppVersion=$env:APP_VERSION" installer\fast-folder-cli.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC termino con codigo $LASTEXITCODE" }
+          $info = (Get-Item dist\fast-folder-cli-setup.exe).VersionInfo
+          Write-Host "fast-folder-cli-setup.exe: $($info.ProductName) $($info.ProductVersion)"
+          if ($info.ProductName -ne 'fast-folder-cli' -or $info.ProductVersion -ne $env:APP_VERSION) {
+            throw 'Metadatos incorrectos en fast-folder-cli-setup.exe'
+          }
 
       - name: Probar instalación y desinstalación silenciosas
         run: |

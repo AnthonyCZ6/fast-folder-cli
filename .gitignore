@@ -4,6 +4,8 @@
 *.dll
 *.so
 *.dylib
+# Recursos de Windows (versión del ejecutable) generados por go-winres en CI
+*.syso
 /bin/
 /dist/
 /fast-folder-cli

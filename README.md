@@ -463,7 +463,10 @@ El workflow entonces:
 1. Ejecuta las pruebas en Windows (con Go 1.26 y con la versión estable más reciente) y en
    Linux con el detector de condiciones de carrera (`-race`).
 2. Compila `fast-folder-cli-windows-amd64.exe` y `fast-folder-cli-windows-arm64.exe` con la
-   versión tomada de la etiqueta.
+   versión tomada de la etiqueta, e incrusta en ellos el nombre del producto y la versión
+   (los que Windows muestra en **Propiedades → Detalles**) con
+   [go-winres](https://github.com/tc-hib/go-winres). El workflow comprueba que esos datos
+   coinciden con la versión en los tres ejecutables.
 3. Genera el asistente `fast-folder-cli-setup.exe` con [Inno Setup](https://jrsoftware.org/isinfo.php)
    (versión y SHA-256 fijados en el workflow) y comprueba en Windows que se instala y
    desinstala correctamente en modo silencioso.
