@@ -105,9 +105,5 @@ Los ejecutables no están firmados digitalmente, así que Windows SmartScreen pu
 Get-FileHash .\fast-folder-cli-windows-amd64.exe
 ```
 
-## 🔏 Code signing policy
-
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org). Consulta la [política de firma de código completa]({{REPO_URL}}#code-signing-policy).
-
 **Cambios completos**: {{CHANGES_URL}}
 EOF

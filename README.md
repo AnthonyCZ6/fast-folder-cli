@@ -245,8 +245,9 @@ aplicaciones y navegador → Configuración de Smart App Control**, o ejecuta en
 A diferencia de SmartScreen, Smart App Control no ofrece **Ejecutar de todas formas** ni
 permite excepciones para un programa concreto. Mientras no haya versiones firmadas, la única
 forma de usar fast-folder-cli es desactivarlo. Antes de hacerlo, ten en cuenta que protege a
-todo el sistema y que, en algunas versiones de Windows 11, no se puede volver a activar sin
-reinstalar Windows.
+todo el sistema. Desde la actualización de abril de 2026 (KB5083769) se puede volver a activar
+sin reinstalar Windows; en versiones anteriores de Windows 11, una vez desactivado, solo se
+podía recuperar reinstalando.
 
 ---
 
@@ -657,15 +658,12 @@ Distribuido bajo la licencia MIT. Consulta el archivo [LICENSE](LICENSE) para m�
 
 ## Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org)
-
 Los ejecutables para Windows (`fast-folder-cli-windows-amd64.exe`, `fast-folder-cli-windows-arm64.exe`
-y `fast-folder-cli-setup.exe`) se firmarán en GitHub Actions a partir del código de este
-repositorio ([`release.yml`](.github/workflows/release.yml)), y cada firma requerirá la
-aprobación manual del mantenedor.
-
-> ℹ️ La solicitud a SignPath Foundation está en trámite: las versiones publicadas hasta ahora
-> (v1.0.0 y v1.1.0) no están firmadas.
+y `fast-folder-cli-setup.exe`) todavía **no están firmados digitalmente**. Se compilan en
+GitHub Actions a partir del código de este repositorio
+([`release.yml`](.github/workflows/release.yml)), y cada versión publica sus sumas SHA-256 en
+`checksums.txt`. Cuando haya versiones firmadas, la firma también se hará en GitHub Actions y
+cada una requerirá la aprobación manual del mantenedor.
 
 - **Committers and reviewers:** [@AnthonyCZ6](https://github.com/AnthonyCZ6)
 - **Approvers:** [@AnthonyCZ6](https://github.com/AnthonyCZ6)
