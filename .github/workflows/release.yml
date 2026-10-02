@@ -160,9 +160,12 @@ jobs:
         run: |
           & "$env:RUNNER_TEMP\inno\ISCC.exe" "/DAppVersion=$env:APP_VERSION" installer\fast-folder-cli.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC termino con codigo $LASTEXITCODE" }
+          # Inno Setup rellena con espacios los textos de la version.
           $info = (Get-Item dist\fast-folder-cli-setup.exe).VersionInfo
-          Write-Host "fast-folder-cli-setup.exe: $($info.ProductName) $($info.ProductVersion)"
-          if ($info.ProductName -ne 'fast-folder-cli' -or $info.ProductVersion -ne $env:APP_VERSION) {
+          $name = $info.ProductName.Trim()
+          $productVersion = $info.ProductVersion.Trim()
+          Write-Host "fast-folder-cli-setup.exe: $name $productVersion"
+          if ($name -ne 'fast-folder-cli' -or $productVersion -ne $env:APP_VERSION) {
             throw 'Metadatos incorrectos en fast-folder-cli-setup.exe'
           }
 
