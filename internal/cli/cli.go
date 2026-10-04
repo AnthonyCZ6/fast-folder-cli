@@ -18,6 +18,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/apps"
+	prefs "github.com/AnthonyCZ6/fast-folder-cli/internal/config"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/launch"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/pathutil"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/period"
@@ -71,6 +72,49 @@ type config struct {
 	apps     bool
 	size     bool
 	cdFile   string
+	exclude  []string // carpetas excluidas: las de --exclude y las del archivo
+	editConf bool     // --config: crear y abrir el archivo de configuración
+
+	// Preferencias del archivo de configuración (no vienen de las banderas).
+	prefs prefs.Config
+}
+
+// loadPrefs lee el archivo de configuración. Las pruebas lo reemplazan para
+// no depender del archivo de quien las ejecuta.
+var loadPrefs = prefs.Load
+
+// openConfigFile abre el archivo de configuración con el editor de las
+// preferencias o, si no hay, con el Bloc de notas. Las pruebas lo reemplazan.
+var openConfigFile = func(editor, path string) error {
+	if editor == "" {
+		return launch.Notepad(path)
+	}
+	return launch.Editor(editor, path)
+}
+
+// withPrefs aplica las preferencias p a lo que no indican las banderas: la
+// ubicación, las ocultas y las carpetas excluidas. A las apps no se aplican.
+func (cfg config) withPrefs(p prefs.Config) config {
+	cfg.prefs = p
+	if cfg.apps {
+		return cfg
+	}
+	if cfg.root == defaultRoot && p.Root != "" {
+		cfg.root = p.Root
+	}
+	cfg.all = cfg.all || p.Hidden
+	cfg.exclude = append(slices.Clip(p.Exclude), cfg.exclude...)
+	return cfg
+}
+
+// readPrefs lee el archivo de configuración. Si tiene errores, lo avisa por
+// stderr y sigue con los valores de siempre.
+func readPrefs(stderr io.Writer) prefs.Config {
+	p, err := loadPrefs()
+	if err != nil {
+		fmt.Fprintf(stderr, "aviso: se ignora la configuración: %v\n", err)
+	}
+	return p
 }
 
 // kind devuelve qué se busca según las opciones.
@@ -99,6 +143,8 @@ func (cfg config) checkApps() error {
 		return errors.New("--size no se aplica a las apps")
 	case cfg.all:
 		return errors.New("--all no se aplica a las apps")
+	case len(cfg.exclude) > 0:
+		return errors.New("--exclude no se aplica a las apps")
 	case cfg.root != defaultRoot:
 		return errors.New("--path no se aplica a las apps: se buscan entre los programas instalados")
 	}
@@ -124,7 +170,10 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	case cfg.version:
 		fmt.Fprintf(stdout, "fast-folder-cli %s\n", version)
 		return exitFound
+	case cfg.editConf:
+		return runConfig(stdout, stderr)
 	}
+	cfg = cfg.withPrefs(readPrefs(stderr))
 
 	// Sin término (ni proyectos ni fecha) no hay nada que buscar: en una
 	// terminal se abre el modo interactivo con las opciones indicadas (así
@@ -166,6 +215,7 @@ func runSearch(ctx context.Context, cfg config, q query.Query, root string, stdo
 
 	opts := q.Options(root, cfg.all)
 	opts.Prune = cfg.size
+	opts.Exclude = cfg.exclude
 	results, stats := search.Start(ctx, opts)
 
 	out := bufio.NewWriter(stdout)
@@ -193,6 +243,33 @@ func runSearch(ctx context.Context, cfg config, q query.Query, root string, stdo
 		fmt.Fprintf(stderr, "error: no se pudo abrir el Explorador: %v\n", sum.openErr)
 	}
 	return exitCode(sum)
+}
+
+// runConfig crea el archivo de configuración con la plantilla comentada, si
+// no existe, muestra su ruta y, en una terminal, lo abre para editarlo.
+func runConfig(stdout, stderr io.Writer) int {
+	path, err := prefs.Path()
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return exitUsage
+	}
+	created, err := prefs.Create(path)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: no se pudo crear %s: %v\n", path, err)
+		return exitUsage
+	}
+	if created {
+		fmt.Fprintf(stdout, "Configuración creada con la plantilla: %s\n", path)
+	} else {
+		fmt.Fprintf(stdout, "Configuración: %s\n", path)
+	}
+	if isInteractive(stdout) {
+		p, _ := loadPrefs()
+		if err := openConfigFile(p.Editor, path); err != nil {
+			fmt.Fprintf(stderr, "error: no se pudo abrir el archivo: %v\n", err)
+		}
+	}
+	return exitFound
 }
 
 // runApps busca q entre las aplicaciones instaladas, las muestra y, con
@@ -387,6 +464,9 @@ func parseArgs(args []string) (config, error) {
 	fs.BoolVar(&cfg.size, "s", false, "")
 	fs.BoolVar(&cfg.size, "size", false, "")
 	fs.StringVar(&cfg.cdFile, "cd-file", "", "")
+	fs.BoolVar(&cfg.editConf, "config", false, "")
+	var exclude string
+	fs.StringVar(&exclude, "exclude", "", "")
 
 	// El paquete flag deja de interpretar opciones en el primer argumento
 	// posicional; se reanuda el análisis tras cada uno para permitir
@@ -414,6 +494,11 @@ func parseArgs(args []string) (config, error) {
 			return cfg, fmt.Errorf("argumentos inesperados: %s", strings.Join(positional, " "))
 		}
 		cfg.term = strings.Join(positional, " ")
+	}
+	for _, name := range strings.Split(exclude, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			cfg.exclude = append(cfg.exclude, name)
+		}
 	}
 	return cfg, cfg.checkApps()
 }
@@ -483,6 +568,11 @@ Opciones:
   -s, --size                Calcula cuánto ocupa cada carpeta encontrada y las
                             ordena de mayor a menor.
   -a, --all                 Incluye carpetas ocultas y de sistema.
+      --exclude <a,b>       No muestra ni recorre las carpetas con esos nombres
+                            (node_modules, venv...). Se suman a las del archivo
+                            de configuración.
+      --config              Crea, si no existe, el archivo de configuración
+                            (%APPDATA%\fast-folder-cli\config.toml) y lo abre.
   -o, --open                Abre la primera coincidencia en el Explorador de Windows.
   -v, --version             Muestra la versión.
   -h, --help                Muestra esta ayuda.

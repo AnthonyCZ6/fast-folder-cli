@@ -103,3 +103,62 @@ func TestTerminalCmd(t *testing.T) {
 		t.Errorf("debería abrirse en una consola nueva: %+v", cmd.SysProcAttr)
 	}
 }
+
+// Cada terminal se abre en la carpeta como carpeta de trabajo, sin pasar su
+// ruta como argumento.
+func TestTerminalKindCmd(t *testing.T) {
+	dir := `C:\a;b & c`
+	tests := []struct {
+		kind    string
+		args    []string
+		console bool
+	}{
+		{"wt", []string{"wt.exe", "-d", "."}, false},
+		{"cmd", []string{"cmd.exe"}, true},
+		{"pwsh", []string{"pwsh.exe", "-NoLogo"}, true},
+		{"powershell", []string{"powershell.exe", "-NoLogo"}, true},
+	}
+	for _, tt := range tests {
+		cmd := terminalKindCmd(tt.kind, dir)
+		if !slices.Equal(cmd.Args, tt.args) || cmd.Dir != dir {
+			t.Errorf("%s: argumentos = %q, carpeta = %q", tt.kind, cmd.Args, cmd.Dir)
+		}
+		console := cmd.SysProcAttr != nil && cmd.SysProcAttr.CreationFlags&windows.CREATE_NEW_CONSOLE != 0
+		if console != tt.console {
+			t.Errorf("%s: consola nueva = %v, want %v", tt.kind, console, tt.console)
+		}
+	}
+}
+
+// Un editor que no es VS Code recibe "." (o el nombre del archivo) y la
+// carpeta como carpeta de trabajo; admite %VARIABLES% en su ruta.
+func TestEditorCmd(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "A&B ^ 100%")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FFC_EDITOR_DIR", `C:\Editores`)
+
+	tests := []struct {
+		command, target string
+		args            []string
+		dir             string
+	}{
+		{"cursor", dir, []string{"cursor", "."}, dir},
+		{"notepad++", file, []string{"notepad++", "config.toml"}, dir},
+		{`%FFC_EDITOR_DIR%\ed.exe`, dir, []string{`C:\Editores\ed.exe`, "."}, dir},
+	}
+	for _, tt := range tests {
+		cmd, err := editorCmd(tt.command, tt.target)
+		if err != nil {
+			t.Fatalf("%s: %v", tt.command, err)
+		}
+		if !slices.Equal(cmd.Args, tt.args) || cmd.Dir != tt.dir {
+			t.Errorf("%s: argumentos = %q, carpeta = %q; want %q, %q", tt.command, cmd.Args, cmd.Dir, tt.args, tt.dir)
+		}
+	}
+}

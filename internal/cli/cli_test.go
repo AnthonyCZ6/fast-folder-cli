@@ -6,15 +6,96 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/apps"
+	prefs "github.com/AnthonyCZ6/fast-folder-cli/internal/config"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
+
+// Las pruebas no leen el archivo de configuración de quien las ejecuta: cada
+// prueba que lo necesita define el suyo con stubPrefs. (TestMain está en
+// bench_test.go, que no puede depender de este archivo.)
+func init() {
+	loadPrefs = func() (prefs.Config, error) { return prefs.Config{}, nil }
+}
+
+// stubPrefs hace que el archivo de configuración contenga p (o falle con err).
+func stubPrefs(t *testing.T, p prefs.Config, err error) {
+	t.Helper()
+	prev := loadPrefs
+	loadPrefs = func() (prefs.Config, error) { return p, err }
+	t.Cleanup(func() { loadPrefs = prev })
+}
+
+// La ubicación, las ocultas y las exclusiones del archivo se aplican si las
+// banderas no dicen otra cosa; --exclude se suma a las del archivo.
+func TestRunAppliesPrefs(t *testing.T) {
+	root := makeTree(t, []string{"informe", "node_modules/informe", "venv/informe", ".oculta/informe"}, nil)
+	stubPrefs(t, prefs.Config{Root: root, Exclude: []string{"node_modules"}, Hidden: true}, nil)
+
+	out := runOK(t, "informe", "--exclude", "venv")
+	for _, want := range []string{
+		filepath.Join(root, "informe"),
+		filepath.Join(root, ".oculta", "informe"),
+		"Resultados : 2 carpetas encontradas",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("la salida no contiene %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "node_modules") || strings.Contains(out, "venv") {
+		t.Errorf("las carpetas excluidas no deberían aparecer:\n%s", out)
+	}
+
+	// -p tiene prioridad sobre la ubicación del archivo.
+	other := makeTree(t, []string{"informe-b"}, nil)
+	if out := runOK(t, "informe", "-p", other); !strings.Contains(out, filepath.Join(other, "informe-b")) {
+		t.Errorf("-p debería mandar sobre el archivo:\n%s", out)
+	}
+}
+
+// Un archivo de configuración con errores se avisa y se ignora.
+func TestRunWarnsAboutBadPrefs(t *testing.T) {
+	stubPrefs(t, prefs.Config{}, errors.New(`config.toml: clave desconocida "x"`))
+	root := makeTree(t, []string{"informe"}, nil)
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"informe", "-p", root}, &stdout, &stderr, "test"); code != exitFound {
+		t.Fatalf("código = %d; stderr: %s", code, stderr.String())
+	}
+	if want := `aviso: se ignora la configuración: config.toml: clave desconocida "x"`; !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	}
+}
+
+// --config crea la plantilla la primera vez y después solo muestra la ruta.
+// Sin terminal no intenta abrir el editor.
+func TestRunConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fast-folder-cli", "config.toml")
+	t.Setenv(prefs.EnvVar, path)
+	opened := false
+	prev := openConfigFile
+	openConfigFile = func(string, string) error { opened = true; return nil }
+	t.Cleanup(func() { openConfigFile = prev })
+
+	if out := runOK(t, "--config"); out != "Configuración creada con la plantilla: "+path+"\n" {
+		t.Errorf("primera vez: %q", out)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != prefs.Template {
+		t.Errorf("no se escribió la plantilla: %v", err)
+	}
+	if out := runOK(t, "--config"); out != "Configuración: "+path+"\n" {
+		t.Errorf("segunda vez: %q", out)
+	}
+	if opened {
+		t.Error("sin terminal no debería abrir el editor")
+	}
+}
 
 func TestParseArgs(t *testing.T) {
 	tests := []struct {
@@ -31,6 +112,8 @@ func TestParseArgs(t *testing.T) {
 		{[]string{"-v"}, config{root: defaultRoot, version: true}},
 		{[]string{"--projects", "api"}, config{term: "api", root: defaultRoot, projects: true}},
 		{[]string{"--apps", "chrome", "-o"}, config{term: "chrome", root: defaultRoot, apps: true, open: true}},
+		{[]string{"x", "--exclude", "node_modules, venv,,"}, config{term: "x", root: defaultRoot, exclude: []string{"node_modules", "venv"}}},
+		{[]string{"--config"}, config{root: defaultRoot, editConf: true}},
 		{[]string{"-m", "hoy", "-s", "x"}, config{term: "x", root: defaultRoot, modified: "hoy", size: true}},
 		{[]string{"--modified=semana", "--size", "--cd-file", "elegida.txt"}, config{root: defaultRoot, modified: "semana", size: true, cdFile: "elegida.txt"}},
 	}
@@ -40,7 +123,7 @@ func TestParseArgs(t *testing.T) {
 			t.Errorf("parseArgs(%q): %v", tt.args, err)
 			continue
 		}
-		if got != tt.want {
+		if !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("parseArgs(%q) = %+v, want %+v", tt.args, got, tt.want)
 		}
 	}
@@ -59,6 +142,7 @@ func TestParseArgsErrors(t *testing.T) {
 		{[]string{"--apps", "-m", "hoy"}, "--modified no se aplica a las apps"},
 		{[]string{"--apps", "x", "-s"}, "--size no se aplica a las apps"},
 		{[]string{"--apps", "-a"}, "--all no se aplica a las apps"},
+		{[]string{"--apps", "--exclude", "x"}, "--exclude no se aplica a las apps"},
 		{[]string{"--apps", "-p", "D:"}, "--path no se aplica a las apps: se buscan entre los programas instalados"},
 	}
 	for _, tt := range tests {

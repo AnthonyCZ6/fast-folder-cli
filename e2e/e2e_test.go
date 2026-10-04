@@ -30,6 +30,9 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	// El programa no debe leer el archivo de configuración de quien ejecuta
+	// las pruebas: FFC_CONFIG apunta a uno que no existe.
+	os.Setenv("FFC_CONFIG", filepath.Join(dir, "sin-config.toml"))
 	code := buildAndRun(m, dir)
 	os.RemoveAll(dir)
 	os.Exit(code)

@@ -7,9 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/pathutil"
 )
 
 // Explorer abre path en una nueva ventana del Explorador de Windows.
@@ -102,6 +105,73 @@ func Terminal(path string) error {
 		}
 	}
 	return err
+}
+
+// TerminalWith abre la terminal kind en una ventana nueva, en path: "wt"
+// (Windows Terminal), "pwsh", "powershell" o "cmd". Si kind está vacía, o la
+// elegida no se puede abrir (no está instalada), usa Terminal.
+func TerminalWith(kind, path string) error {
+	if kind != "" {
+		if err := start(terminalKindCmd(kind, path)); err == nil {
+			return nil
+		}
+	}
+	return Terminal(path)
+}
+
+// terminalKindCmd devuelve la orden que abre la terminal kind en path. La
+// carpeta se pasa como carpeta de trabajo, no como argumento: Windows
+// Terminal separa sus órdenes con ";", que puede aparecer en el nombre.
+func terminalKindCmd(kind, path string) *exec.Cmd {
+	switch kind {
+	case "wt":
+		cmd := exec.Command("wt.exe", "-d", ".")
+		cmd.Dir = path
+		return cmd
+	case "cmd":
+		cmd := exec.Command("cmd.exe")
+		cmd.Dir = path
+		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_CONSOLE}
+		return cmd
+	}
+	return terminalCmd(kind+".exe", path)
+}
+
+// Editor abre target (una carpeta o un archivo) con el editor command: vacío
+// o "code" es VS Code, buscado como en VSCode; si no, un programa del PATH
+// ("cursor", "notepad++") o la ruta de un ejecutable (admite %VARIABLES%).
+func Editor(command, target string) error {
+	cmd, err := editorCmd(command, target)
+	if err != nil {
+		return err
+	}
+	return start(cmd)
+}
+
+// editorCmd devuelve la orden de Editor. Un editor que no es VS Code se
+// ejecuta en la carpeta de target y recibe solo su nombre ("." si es una
+// carpeta): así ninguna ruta pasa por la línea de órdenes, y un editor que
+// sea un script .cmd (como cursor) no puede interpretar & o ^ del nombre.
+func editorCmd(command, target string) (*exec.Cmd, error) {
+	if command == "" || strings.EqualFold(command, "code") {
+		exe, err := findVSCode()
+		if err != nil {
+			return nil, err
+		}
+		return exec.Command(exe, target), nil
+	}
+	dir, arg := target, "."
+	if info, err := os.Stat(target); err == nil && !info.IsDir() {
+		dir, arg = filepath.Dir(target), filepath.Base(target)
+	}
+	cmd := exec.Command(pathutil.ExpandEnv(command), arg)
+	cmd.Dir = dir
+	return cmd, nil
+}
+
+// Notepad abre file en el Bloc de notas.
+func Notepad(file string) error {
+	return start(exec.Command("notepad.exe", file))
 }
 
 // terminalCmd devuelve la orden que abre shell en una consola nueva, en la
