@@ -24,6 +24,9 @@ jobs:
     name: Pruebas (${{ matrix.os }}, Go ${{ matrix.go }})
     runs-on: ${{ matrix.os }}
     strategy:
+      # Si falla en un sistema, se termina en los demás: así se ve si el fallo
+      # es de Windows, de Linux o de todos.
+      fail-fast: false
       matrix:
         include:
           # Versión mínima declarada en go.mod.
