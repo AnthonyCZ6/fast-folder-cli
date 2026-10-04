@@ -376,6 +376,9 @@ Si solo indicas opciones, como `fast -p D:`, abre el modo interactivo con ellas.
 | `-s` | `--size` | Calcula [cuánto ocupa](#cuánto-ocupa-cada-carpeta) cada carpeta encontrada y las ordena de mayor a menor. | desactivado |
 | `-a` | `--all` | Incluye carpetas ocultas y de sistema. | desactivado |
 | `-o` | `--open` | Abre la primera carpeta encontrada en el Explorador de Windows. | desactivado |
+| | `--exclude` | Carpetas que no se muestran ni se recorren, separadas por comas (`--exclude node_modules,venv`). Se suman a las de la [configuración](#personalización). | ninguna |
+| | `--json` | Una línea JSON por resultado, para scripts, sin cabecera ni resumen. | desactivado |
+| | `--config` | Crea, si no existe, el [archivo de configuración](#personalización) y lo abre. | |
 | `-v` | `--version` | Muestra la versión instalada. | |
 | `-h` | `--help` | Muestra la ayuda. | |
 
@@ -467,8 +470,8 @@ Explorador con el ejecutable seleccionado:
 
 - La ubicación es la carpeta del ejecutable principal o, si el programa no lo indica, la
   carpeta donde se instaló.
-- También aparecen los programas que solo registran su ejecutable, como `EXCEL` o
-  `WINWORD` de Microsoft 365.
+- También aparecen los accesos directos del menú Inicio (apps portables como Figma, o Git
+  Bash) y los programas que solo registran su ejecutable, como Excel o Word de Microsoft 365.
 - No se muestran los componentes del sistema ni las actualizaciones, ni las apps de la
   Microsoft Store, cuya carpeta (`WindowsApps`) está protegida.
 - Sin término, `fast --apps` las lista todas. `-p`, `-m`, `-s`, `-a` y `--projects` no se
@@ -574,6 +577,30 @@ recorre, aunque esté oculta: `-p %APPDATA%` funciona sin `--all`.
 | `130` | Búsqueda interrumpida con <kbd>Ctrl</kbd> + <kbd>C</kbd> (se muestran los resultados parciales). |
 
 ---
+
+## Personalización
+
+`fast --config` crea (si no existe) y abre `%APPDATA%\fast-folder-cli\config.toml`, una
+plantilla comentada: quita el `#` de las líneas que quieras activar. Sin archivo, todo funciona
+como siempre; si el archivo tiene un error, se avisa y se ignora. Las banderas mandan sobre el
+archivo.
+
+```toml
+ubicacion = '%USERPROFILE%\Documents'        # dónde buscar si no se indica -p
+excluir = ["node_modules", "venv", ".venv"]  # carpetas que nunca se recorren
+ocultas = true                               # como -a
+editor = "cursor"                            # tecla v: code, cursor, codium, notepad++...
+terminal = "wt"                              # tecla t: wt, pwsh, powershell o cmd
+recientes = 5                                # carpetas elegidas hace poco (0: ninguna)
+
+[[ubicaciones]]                              # ubicaciones propias, las primeras del formulario
+nombre = "Proyectos"
+ruta = 'D:\dev'
+```
+
+- Las carpetas que eliges con Enter en el modo interactivo aparecen después como
+  **Reciente: …** en el campo Ubicación.
+- La variable de entorno `FFC_CONFIG` permite usar otro archivo.
 
 ## ⚙️ Cómo funciona
 
