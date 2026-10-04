@@ -402,7 +402,7 @@ func TestAppsOpenWithoutExe(t *testing.T) {
 	m, rec := newTestModel(testLocations...)
 	rec.apps = testApps
 	m = runSearch(t, selectApps(m)) // sin término: todas
-	m = send(m, keys("end", "e")...)
+	send(m, keys("end", "e")...)
 	if want := []string{"show:" + testApps[1].Dir + "|"}; !slices.Equal(rec.calls, want) {
 		t.Errorf("acciones = %v, want %v", rec.calls, want)
 	}
