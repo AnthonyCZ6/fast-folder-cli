@@ -63,6 +63,14 @@ type config struct {
 	cdFile   string
 }
 
+// kind devuelve qué se busca según las opciones.
+func (cfg config) kind() query.Kind {
+	if cfg.projects {
+		return query.Projects
+	}
+	return query.Folders
+}
+
 // Run ejecuta la CLI con los argumentos indicados (sin el nombre del programa)
 // y devuelve el código de salida del proceso.
 func Run(args []string, stdout, stderr io.Writer, version string) int {
@@ -88,7 +96,7 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	// terminal se abre el modo interactivo con las opciones indicadas (así
 	// funciona "fast -p D:" y el menú contextual del Explorador). --cd-file,
 	// que usan los scripts fcd, también lo abre siempre.
-	q, err := query.New(cfg.term, cfg.projects, cfg.modified, time.Now())
+	q, err := query.New(cfg.term, cfg.kind(), cfg.modified, time.Now())
 	empty := errors.Is(err, query.ErrEmpty)
 	if cfg.cdFile != "" || (empty && isInteractive(stdout)) {
 		return runInteractive(cfg, stdout, stderr, version)
@@ -213,7 +221,7 @@ func runInteractive(cfg config, stdout, stderr io.Writer, version string) int {
 	opts := tui.Options{
 		Term:     cfg.term,
 		Hidden:   cfg.all,
-		Projects: cfg.projects,
+		Kind:     cfg.kind(),
 		Modified: cfg.modified,
 		CDFile:   cfg.cdFile,
 	}

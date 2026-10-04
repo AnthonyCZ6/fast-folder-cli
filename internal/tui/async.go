@@ -37,7 +37,7 @@ type detailsMsg struct {
 func (m model) startSearch() (tea.Model, tea.Cmd) {
 	// Un término con solo espacios cuenta como vacío: se pide escribir algo.
 	term := strings.TrimSpace(m.input.Value())
-	q, err := query.New(term, m.projects, m.dates[m.dateIndex].value, time.Now())
+	q, err := query.New(term, m.kind(), m.dates[m.dateIndex].value, time.Now())
 	switch {
 	case errors.Is(err, query.ErrEmpty):
 		m.formErr = "Escribe el nombre (o parte del nombre) de la carpeta que buscas, o elige Proyectos o una fecha."

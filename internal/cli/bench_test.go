@@ -37,7 +37,7 @@ func BenchmarkRun(b *testing.B) {
 		{"size", "node_modules", config{size: true}},
 	}
 	for _, c := range cases {
-		q, err := query.New(c.term, false, "", time.Now())
+		q, err := query.New(c.term, query.Folders, "", time.Now())
 		if err != nil {
 			b.Fatal(err)
 		}

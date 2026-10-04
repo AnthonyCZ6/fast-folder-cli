@@ -10,11 +10,11 @@ import (
 
 var now = time.Date(2026, 10, 2, 15, 30, 0, 0, time.Local)
 
-func mustNew(t *testing.T, term string, projects bool, modified string) Query {
+func mustNew(t *testing.T, term string, kind Kind, modified string) Query {
 	t.Helper()
-	q, err := New(term, projects, modified, now)
+	q, err := New(term, kind, modified, now)
 	if err != nil {
-		t.Fatalf("New(%q, %v, %q): %v", term, projects, modified, err)
+		t.Fatalf("New(%q, %v, %q): %v", term, kind, modified, err)
 	}
 	return q
 }
@@ -22,26 +22,26 @@ func mustNew(t *testing.T, term string, projects bool, modified string) Query {
 func TestNewErrors(t *testing.T) {
 	tests := []struct {
 		term     string
-		projects bool
+		kind     Kind
 		modified string
 		want     error
 	}{
-		{"", false, "", ErrEmpty},
-		{"informe", false, "mañana", period.ErrInvalid},
-		{"", true, "0d", period.ErrInvalid},
+		{"", Folders, "", ErrEmpty},
+		{"informe", Folders, "mañana", period.ErrInvalid},
+		{"", Projects, "0d", period.ErrInvalid},
 		// Un periodo con solo espacios no es "cualquier fecha": es inválido.
-		{"informe", false, " ", period.ErrInvalid},
+		{"informe", Folders, " ", period.ErrInvalid},
 	}
 	for _, tt := range tests {
-		if _, err := New(tt.term, tt.projects, tt.modified, now); !errors.Is(err, tt.want) {
-			t.Errorf("New(%q, %v, %q) error = %v, want %v", tt.term, tt.projects, tt.modified, err, tt.want)
+		if _, err := New(tt.term, tt.kind, tt.modified, now); !errors.Is(err, tt.want) {
+			t.Errorf("New(%q, %v, %q) error = %v, want %v", tt.term, tt.kind, tt.modified, err, tt.want)
 		}
 	}
 
 	// Errores del término: un patrón mal formado y un término con solo
 	// espacios, que no cuenta como vacío.
 	for _, term := range []string{"[roto", "   "} {
-		_, err := New(term, false, "", now)
+		_, err := New(term, Folders, "", now)
 		if err == nil || errors.Is(err, ErrEmpty) || errors.Is(err, period.ErrInvalid) {
 			t.Errorf("New(%q): error = %v, want el error del término", term, err)
 		}
@@ -51,27 +51,27 @@ func TestNewErrors(t *testing.T) {
 func TestDescribe(t *testing.T) {
 	tests := []struct {
 		term     string
-		projects bool
+		kind     Kind
 		modified string
 		want     string
 	}{
-		{"tesis", false, "", `"tesis"`},
-		{"", true, "", "proyectos"},
-		{"api", true, "", `proyectos "api"`},
-		{"", false, "hoy", "carpetas modificadas hoy"},
-		{"informe", false, "semana", `carpetas "informe" modificadas en los últimos 7 días`},
-		{"", true, "ayer", "proyectos modificados ayer"},
+		{"tesis", Folders, "", `"tesis"`},
+		{"", Projects, "", "proyectos"},
+		{"api", Projects, "", `proyectos "api"`},
+		{"", Folders, "hoy", "carpetas modificadas hoy"},
+		{"informe", Folders, "semana", `carpetas "informe" modificadas en los últimos 7 días`},
+		{"", Projects, "ayer", "proyectos modificados ayer"},
 	}
 	for _, tt := range tests {
-		if got := mustNew(t, tt.term, tt.projects, tt.modified).Describe(); got != tt.want {
-			t.Errorf("New(%q, %v, %q).Describe() = %q, want %q", tt.term, tt.projects, tt.modified, got, tt.want)
+		if got := mustNew(t, tt.term, tt.kind, tt.modified).Describe(); got != tt.want {
+			t.Errorf("New(%q, %v, %q).Describe() = %q, want %q", tt.term, tt.kind, tt.modified, got, tt.want)
 		}
 	}
 }
 
 func TestFound(t *testing.T) {
-	folders := mustNew(t, "x", false, "")
-	projects := mustNew(t, "", true, "")
+	folders := mustNew(t, "x", Folders, "")
+	projects := mustNew(t, "", Projects, "")
 	tests := []struct {
 		got, want string
 	}{
@@ -88,7 +88,7 @@ func TestFound(t *testing.T) {
 }
 
 func TestOptions(t *testing.T) {
-	opts := mustNew(t, "cancion", true, "ayer").Options("raíz", true)
+	opts := mustNew(t, "cancion", Projects, "ayer").Options("raíz", true)
 	if opts.Root != "raíz" || !opts.IncludeHidden || !opts.Projects {
 		t.Errorf("opciones = %+v", opts)
 	}
@@ -100,7 +100,7 @@ func TestOptions(t *testing.T) {
 		t.Errorf("intervalo = [%v, %v), want ayer", opts.ModifiedAfter, opts.ModifiedBefore)
 	}
 
-	opts = mustNew(t, "", true, "").Options("raíz", false)
+	opts = mustNew(t, "", Projects, "").Options("raíz", false)
 	if opts.Matcher != nil || !opts.ModifiedAfter.IsZero() || !opts.ModifiedBefore.IsZero() {
 		t.Errorf("sin término ni fecha no debería filtrar: %+v", opts)
 	}

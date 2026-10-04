@@ -291,7 +291,7 @@ func TestRunWithoutOpenDoesNotOpen(t *testing.T) {
 // sin mostrar tamaños, y devuelve la salida.
 func runInterrupted(t *testing.T, ctx context.Context, cfg config, root string) string {
 	t.Helper()
-	q, err := query.New("node_modules", false, "", time.Now())
+	q, err := query.New("node_modules", query.Folders, "", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

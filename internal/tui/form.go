@@ -1,6 +1,10 @@
 package tui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
+)
 
 // Campos del formulario, en el orden en que se recorren con ↑ y ↓.
 type field int
@@ -13,6 +17,18 @@ const (
 	fieldHidden
 	fieldCount
 )
+
+// kindOption es una opción del campo Tipo.
+type kindOption struct {
+	label string
+	hint  string // qué encuentra, junto al valor
+	kind  query.Kind
+}
+
+var kindOptions = []kindOption{
+	{"Carpetas", "cualquier carpeta cuyo nombre coincida", query.Folders},
+	{"Proyectos", "carpetas con .git, package.json, go.mod... (el nombre es opcional)", query.Projects},
+}
 
 // dateOption es una opción del campo Fecha.
 type dateOption struct {
@@ -50,7 +66,8 @@ func (m model) updateForm(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case fieldKind:
-			m.projects = !m.projects
+			n := len(kindOptions)
+			m.kindIndex = (m.kindIndex + step + n) % n
 			return m, nil
 		case fieldDate:
 			n := len(m.dates)
@@ -75,6 +92,11 @@ func (m model) updateForm(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, tea.Batch(focusCmd, cmd)
+}
+
+// kind devuelve lo que se busca según el campo Tipo.
+func (m model) kind() query.Kind {
+	return kindOptions[m.kindIndex].kind
 }
 
 func (m model) setFocus(f field) (tea.Model, tea.Cmd) {

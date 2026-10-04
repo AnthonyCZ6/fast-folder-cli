@@ -51,11 +51,11 @@ func TestPrinterMatch(t *testing.T) {
 }
 
 func TestPrinterSummary(t *testing.T) {
-	folders, err := query.New("informe", false, "", time.Now())
+	folders, err := query.New("informe", query.Folders, "", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	projects, err := query.New("", true, "", time.Now())
+	projects, err := query.New("", query.Projects, "", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestPrinterSummary(t *testing.T) {
 }
 
 func TestPrinterSummaryColorRule(t *testing.T) {
-	q, err := query.New("informe", false, "", time.Now())
+	q, err := query.New("informe", query.Folders, "", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

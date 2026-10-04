@@ -11,6 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
 
@@ -121,11 +122,11 @@ func TestFormArrowNavigation(t *testing.T) {
 	}
 
 	m = send(m, keys("down", "right")...)
-	if m.focus != fieldKind || !m.projects {
-		t.Errorf("↓→: foco = %v proyectos = %v, want proyectos activados", m.focus, m.projects)
+	if m.focus != fieldKind || m.kind() != query.Projects {
+		t.Errorf("↓→: foco = %v tipo = %v, want proyectos", m.focus, m.kind())
 	}
 	m = send(m, keys("left")...)
-	if m.projects {
+	if m.kind() != query.Folders {
 		t.Error("←: debería volver a buscar carpetas")
 	}
 

@@ -18,11 +18,21 @@ import (
 // periodo de modificación.
 var ErrEmpty = errors.New("no hay nada que buscar")
 
+// Kind es el tipo de lo que se busca.
+type Kind int
+
+const (
+	// Folders busca carpetas cuyo nombre coincide con el término.
+	Folders Kind = iota
+	// Projects busca carpetas de proyectos (.git, go.mod, package.json...).
+	Projects
+)
+
 // Query es una búsqueda ya validada.
 type Query struct {
-	Term     string       // término tal como se recibió; vacío: cualquier nombre
-	Projects bool         // buscar proyectos en lugar de carpetas
-	Period   period.Range // intervalo de modificación; cero: cualquier fecha
+	Term   string       // término tal como se recibió; vacío: cualquier nombre
+	Kind   Kind         // qué se busca
+	Period period.Range // intervalo de modificación; cero: cualquier fecha
 
 	matcher *search.Matcher // nil si no hay término
 }
@@ -38,12 +48,12 @@ type Query struct {
 // Devuelve ErrEmpty si no hay nada que buscar, un error que cumple
 // errors.Is(err, period.ErrInvalid) si el periodo no es válido y, si no, el
 // error del término (por ejemplo, un patrón mal formado).
-func New(term string, projects bool, modified string, now time.Time) (Query, error) {
-	if term == "" && !projects && modified == "" {
+func New(term string, kind Kind, modified string, now time.Time) (Query, error) {
+	if term == "" && kind == Folders && modified == "" {
 		return Query{}, ErrEmpty
 	}
 
-	q := Query{Term: term, Projects: projects}
+	q := Query{Term: term, Kind: kind}
 	if term != "" {
 		m, err := search.NewMatcher(term)
 		if err != nil {
@@ -67,7 +77,7 @@ func (q Query) Options(root string, includeHidden bool) search.Options {
 		Root:           root,
 		Matcher:        q.matcher,
 		IncludeHidden:  includeHidden,
-		Projects:       q.Projects,
+		Projects:       q.Kind == Projects,
 		ModifiedAfter:  q.Period.After,
 		ModifiedBefore: q.Period.Before,
 	}
@@ -78,7 +88,7 @@ func (q Query) Options(root string, includeHidden bool) search.Options {
 func (q Query) Describe() string {
 	var parts []string
 	switch {
-	case q.Projects:
+	case q.Kind == Projects:
 		parts = append(parts, "proyectos")
 	case q.Term == "" || q.Period.Label != "":
 		parts = append(parts, "carpetas")
@@ -88,7 +98,7 @@ func (q Query) Describe() string {
 	}
 	if q.Period.Label != "" {
 		adjective := "modificadas"
-		if q.Projects {
+		if q.Kind == Projects {
 			adjective = "modificados"
 		}
 		parts = append(parts, adjective+" "+q.Period.Label)
@@ -99,7 +109,7 @@ func (q Query) Describe() string {
 // Found nombra n resultados de esta búsqueda: "1 carpeta encontrada",
 // "3 proyectos encontrados"...
 func (q Query) Found(n int64) string {
-	if q.Projects {
+	if q.Kind == Projects {
 		return humanize.Count(n, "proyecto encontrado", "proyectos encontrados")
 	}
 	return humanize.Count(n, "carpeta encontrada", "carpetas encontradas")

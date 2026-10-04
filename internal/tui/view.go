@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/humanize"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
 
@@ -36,7 +37,10 @@ func (m model) viewForm() string {
 	}
 	b.WriteString(m.line(m.header(styleDim.Render(version))) + "\n\n")
 
-	valueW := ansi.StringWidth("Proyectos")
+	valueW := 0
+	for _, k := range kindOptions {
+		valueW = max(valueW, ansi.StringWidth(k.label))
+	}
 	for _, loc := range m.locations {
 		valueW = max(valueW, ansi.StringWidth(loc.Label))
 	}
@@ -51,12 +55,9 @@ func (m model) viewForm() string {
 		b.WriteString(m.line(m.formRow(fieldLocation, "Ubicación", value, loc.Path)) + "\n")
 	}
 
-	kind, kindHint := "Carpetas", "cualquier carpeta cuyo nombre coincida"
-	if m.projects {
-		kind, kindHint = "Proyectos", "carpetas con .git, package.json, go.mod... (el nombre es opcional)"
-	}
-	value := selector(kind, m.focus == fieldKind, valueW)
-	b.WriteString(m.line(m.formRow(fieldKind, "Tipo", value, kindHint)) + "\n")
+	kind := kindOptions[m.kindIndex]
+	value := selector(kind.label, m.focus == fieldKind, valueW)
+	b.WriteString(m.line(m.formRow(fieldKind, "Tipo", value, kind.hint)) + "\n")
 
 	value = selector(m.dates[m.dateIndex].label, m.focus == fieldDate, valueW)
 	b.WriteString(m.line(m.formRow(fieldDate, "Modificada", value, "fecha de modificación de la carpeta")) + "\n")
@@ -116,7 +117,7 @@ func (m model) viewResults() string {
 			lines = 1
 		} else {
 			empty := "No se encontró ninguna carpeta con ese nombre."
-			if m.query.Projects {
+			if m.query.Kind == query.Projects {
 				empty = "No se encontró ningún proyecto."
 			}
 			b.WriteString(m.line("   "+styleWarn.Render(empty)) + "\n")

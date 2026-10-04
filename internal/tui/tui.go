@@ -19,12 +19,12 @@ import (
 
 // Options configura el estado inicial del modo interactivo.
 type Options struct {
-	Term     string // búsqueda inicial
-	Root     string // ubicación inicial (ruta ya resuelta); vacía: la primera
-	Hidden   bool   // incluir las carpetas ocultas y de sistema
-	Projects bool   // buscar proyectos en lugar de carpetas
-	Modified string // periodo de modificación, como en --modified
-	CDFile   string // si no está vacío, Enter escribe aquí la carpeta elegida y sale (fcd)
+	Term     string     // búsqueda inicial
+	Root     string     // ubicación inicial (ruta ya resuelta); vacía: la primera
+	Hidden   bool       // incluir las carpetas ocultas y de sistema
+	Kind     query.Kind // qué se busca
+	Modified string     // periodo de modificación, como en --modified
+	CDFile   string     // si no está vacío, Enter escribe aquí la carpeta elegida y sale (fcd)
 }
 
 // Run abre la interfaz interactiva y bloquea hasta que el usuario sale. Si
@@ -78,7 +78,7 @@ type model struct {
 	input     textinput.Model
 	locations []location
 	locIndex  int
-	projects  bool
+	kindIndex int
 	dates     []dateOption
 	dateIndex int
 	hidden    bool
@@ -135,8 +135,13 @@ func (m model) apply(opts Options) model {
 	m.input.SetValue(opts.Term)
 	m.input.CursorEnd()
 	m.hidden = opts.Hidden
-	m.projects = opts.Projects
 	m.cdFile = opts.CDFile
+	for i, k := range kindOptions {
+		if k.kind == opts.Kind {
+			m.kindIndex = i
+			break
+		}
+	}
 
 	if opts.Root != "" {
 		m.locIndex = -1
@@ -167,7 +172,7 @@ func (m model) apply(opts Options) model {
 		}
 	}
 
-	if opts.Term != "" || opts.Projects || opts.Modified != "" {
+	if opts.Term != "" || opts.Kind != query.Folders || opts.Modified != "" {
 		next, cmd := m.startSearch()
 		m = next.(model)
 		m.initCmd = cmd
