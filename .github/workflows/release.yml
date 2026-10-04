@@ -22,46 +22,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Formato, go vet y pruebas: los mismos pasos que en cada push (ci.yml).
   test:
-    name: Pruebas (${{ matrix.os }}, Go ${{ matrix.go }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          # Versión mínima declarada en go.mod.
-          - os: windows-latest
-            go: "1.26"
-          - os: windows-latest
-            go: stable
-          # El detector de condiciones de carrera requiere cgo (gcc), incluido
-          # en los runners de Linux.
-          - os: ubuntu-latest
-            go: stable
-            race: true
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version: ${{ matrix.go }}
-
-      - name: Comprobar formato (gofmt)
-        if: runner.os == 'Linux'
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "::error::Archivos sin el formato de gofmt:"
-            echo "$unformatted"
-            gofmt -d .
-            exit 1
-          fi
-
-      - name: Análisis estático (go vet)
-        run: go vet ./...
-
-      - name: Pruebas (go test)
-        shell: bash
-        run: go test ${{ matrix.race && '-race' || '' }} -count=1 ./...
+    name: Pruebas
+    uses: ./.github/workflows/ci.yml
 
   build:
     name: Compilar ejecutables
