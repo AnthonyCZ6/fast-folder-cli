@@ -6,10 +6,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/apps"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
@@ -28,6 +30,7 @@ func TestParseArgs(t *testing.T) {
 		{[]string{"--", "-raro"}, config{term: "-raro", root: defaultRoot}},
 		{[]string{"-v"}, config{root: defaultRoot, version: true}},
 		{[]string{"--projects", "api"}, config{term: "api", root: defaultRoot, projects: true}},
+		{[]string{"--apps", "chrome", "-o"}, config{term: "chrome", root: defaultRoot, apps: true, open: true}},
 		{[]string{"-m", "hoy", "-s", "x"}, config{term: "x", root: defaultRoot, modified: "hoy", size: true}},
 		{[]string{"--modified=semana", "--size", "--cd-file", "elegida.txt"}, config{root: defaultRoot, modified: "semana", size: true, cdFile: "elegida.txt"}},
 	}
@@ -51,6 +54,11 @@ func TestParseArgsErrors(t *testing.T) {
 		{[]string{"-x"}, "opción desconocida: -x"},
 		{[]string{"-n"}, "falta el valor de la opción -n"},
 		{[]string{"-n", "uno", "dos"}, "argumentos inesperados: dos"},
+		// Opciones que no se aplican a las apps.
+		{[]string{"--apps", "--projects"}, "--apps y --projects no se pueden usar juntas"},
+		{[]string{"--apps", "-m", "hoy"}, "--modified no se aplica a las apps"},
+		{[]string{"--apps", "x", "-s"}, "--size no se aplica a las apps"},
+		{[]string{"--apps", "-p", "D:"}, "--path no se aplica a las apps: se buscan entre los programas instalados"},
 	}
 	for _, tt := range tests {
 		_, err := parseArgs(tt.args)
@@ -369,6 +377,7 @@ func FuzzParseArgs(f *testing.F) {
 		"-- -raro",
 		"--projects -m semana -s",
 		"--path= -n",
+		"--apps chrome -o",
 		"-x",
 		"--",
 		"",
@@ -378,4 +387,87 @@ func FuzzParseArgs(f *testing.F) {
 	f.Fuzz(func(t *testing.T, line string) {
 		_, _ = parseArgs(strings.Fields(line))
 	})
+}
+
+var testApps = []apps.App{
+	{
+		Name:    "Google Chrome",
+		Dir:     `C:\Program Files\Google\Chrome\Application`,
+		Exe:     `C:\Program Files\Google\Chrome\Application\chrome.exe`,
+		Version: "120.0",
+	},
+	{Name: "Paint.NET", Dir: `C:\Program Files\paint.net`},
+}
+
+// stubApps hace que --apps encuentre las aplicaciones de list (o falle con
+// err) y devuelve las ubicaciones que se abren, como "carpeta|ejecutable".
+func stubApps(t *testing.T, list []apps.App, err error) *[]string {
+	t.Helper()
+	prevFind, prevShow := findApps, showApp
+	findApps = func(match func(string) bool) ([]apps.App, error) {
+		var found []apps.App
+		for _, a := range list {
+			if match(a.Name) {
+				found = append(found, a)
+			}
+		}
+		return found, err
+	}
+	var shown []string
+	showApp = func(dir, exe string) error {
+		shown = append(shown, dir+"|"+exe)
+		return nil
+	}
+	t.Cleanup(func() { findApps, showApp = prevFind, prevShow })
+	return &shown
+}
+
+func TestRunApps(t *testing.T) {
+	shown := stubApps(t, testApps, nil)
+
+	out := runOK(t, "--apps", "chrome", "-o")
+	for _, want := range []string{
+		`Buscando apps "chrome" entre los programas instalados`,
+		`  [1] Google Chrome  C:\Program Files\Google\Chrome\Application  (120.0)` + "\n",
+		"Resultados : 1 app encontrada",
+		`Explorador : C:\Program Files\Google\Chrome\Application` + "\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("la salida no contiene %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Analizadas") || strings.Contains(out, "Paint.NET") {
+		t.Errorf("salida inesperada:\n%s", out)
+	}
+	if want := []string{testApps[0].Dir + "|" + testApps[0].Exe}; !slices.Equal(*shown, want) {
+		t.Errorf("se abrió %q, want %q", *shown, want)
+	}
+}
+
+func TestRunAppsWithoutTermListsAll(t *testing.T) {
+	shown := stubApps(t, testApps, nil)
+	out := runOK(t, "--apps", "-a") // -a no afecta a las apps
+	if !strings.Contains(out, "[2] Paint.NET") || !strings.Contains(out, "Resultados : 2 apps encontradas") {
+		t.Errorf("deberían aparecer todas las apps:\n%s", out)
+	}
+	if len(*shown) != 0 {
+		t.Errorf("sin -o no debería abrirse nada: %q", *shown)
+	}
+}
+
+func TestRunAppsExitCodes(t *testing.T) {
+	stubApps(t, testApps, nil)
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--apps", "nada"}, &stdout, &stderr, "test"); code != exitNoMatch {
+		t.Errorf("sin coincidencias: código = %d, want %d", code, exitNoMatch)
+	}
+
+	stubApps(t, nil, errors.New("no se pudo leer el registro"))
+	stdout.Reset()
+	if code := Run([]string{"--apps", "chrome"}, &stdout, &stderr, "test"); code != exitUsage {
+		t.Errorf("con error: código = %d, want %d", code, exitUsage)
+	}
+	if !strings.Contains(stderr.String(), "error: no se pudo leer el registro") {
+		t.Errorf("el error no se mostró: %q", stderr.String())
+	}
 }

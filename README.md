@@ -34,6 +34,7 @@ Tiempo     : 854 ms
 | 🔤 **Sin acentos** | `cancion` encuentra `Canción`, `ano` encuentra `Año 2024`: escribe rápido, sin preocuparte por las tildes. |
 | 📂 **Entra en la carpeta** | `fcd tesis` busca, eliges con las flechas y la terminal **queda dentro** de la carpeta. |
 | 🧑‍💻 **Tus proyectos** | `fast --projects` lista todos tus proyectos (Git, Node.js, Python, Go, .NET, Java, Unity...) aunque estén regados por Descargas, el Escritorio o Documentos. |
+| 📦 **¿Dónde se instaló?** | `fast --apps chrome -o` encuentra una app instalada y abre su carpeta con el ejecutable seleccionado. |
 | 📅 **"¿En qué trabajé ayer?"** | `fast -m ayer` muestra las carpetas modificadas ayer; también `hoy`, `semana`, `mes`... |
 | 💾 **¿Qué ocupa tanto?** | `fast node_modules --size` dice cuánto pesa cada carpeta, de mayor a menor. |
 | 🖱️ **Desde el Explorador** | Clic derecho en una carpeta → **Buscar carpetas aquí**. |
@@ -365,10 +366,11 @@ Si solo indicas opciones, como `fast -p D:`, abre el modo interactivo con ellas.
 
 | Corta | Larga | Descripción | Por defecto |
 | --- | --- | --- | --- |
-| `-n` | `--name` | Término o patrón a buscar en los nombres de carpeta. También puede indicarse como argumento posicional. | *(obligatorio, salvo con `--projects` o `-m`)* |
+| `-n` | `--name` | Término o patrón a buscar en los nombres de carpeta. También puede indicarse como argumento posicional. | *(obligatorio, salvo con `--projects`, `--apps` o `-m`)* |
 | `-p` | `--path` | Carpeta raíz desde la que comienza la búsqueda. Admite variables de entorno. | `%USERPROFILE%` |
 | `-m` | `--modified` | Solo carpetas [modificadas](#filtrar-por-fecha-de-modificación) en ese periodo: `hoy`, `ayer`, `semana`, `mes`, `año`, un número de días (`3d`) o una fecha (`2026-09-01`). | cualquier fecha |
 | | `--projects` | Busca [carpetas de proyectos](#buscar-proyectos) en lugar de cualquier carpeta. | desactivado |
+| | `--apps` | Busca [aplicaciones instaladas](#buscar-apps-instaladas) por su nombre en lugar de carpetas. Con `-o` abre su ubicación. | desactivado |
 | `-s` | `--size` | Calcula [cuánto ocupa](#cuánto-ocupa-cada-carpeta) cada carpeta encontrada y las ordena de mayor a menor. | desactivado |
 | `-a` | `--all` | Incluye carpetas ocultas y de sistema. | desactivado |
 | `-o` | `--open` | Abre la primera carpeta encontrada en el Explorador de Windows. | desactivado |
@@ -411,6 +413,9 @@ fast-folder-cli -m ayer -p %USERPROFILE%\Documents
 
 # Cuánto ocupa cada node_modules de C:\dev
 fast-folder-cli node_modules --size -p C:\dev
+
+# Dónde se instaló Chrome: abre su carpeta con chrome.exe seleccionado
+fast-folder-cli --apps chrome -o
 ```
 
 ### Buscar proyectos
@@ -444,6 +449,27 @@ interior de un proyecto no se recorre (`node_modules`, `bin`, `.git`...), lo que
 búsqueda rápida; por eso un proyecto dentro de otro no aparece. La carpeta raíz de la
 búsqueda nunca cuenta como proyecto, para que un `package.json` suelto en tu carpeta
 personal no oculte todo lo demás.
+
+### Buscar apps instaladas
+
+`--apps` busca entre los programas instalados (los mismos que muestra **Configuración →
+Aplicaciones**) en lugar de recorrer carpetas, así que responde al instante. Con `-o` abre
+su ubicación en el Explorador con el ejecutable seleccionado:
+
+```text
+> fast --apps chrome -o
+
+  [1] Google Chrome  C:\Program Files\Google\Chrome\Application  (120.0.6099.130)
+```
+
+- La ubicación es la carpeta del ejecutable principal o, si el programa no lo indica, la
+  carpeta donde se instaló.
+- También aparecen los programas que solo registran su ejecutable, como `EXCEL` o
+  `WINWORD` de Microsoft 365.
+- No se muestran los componentes del sistema ni las actualizaciones, ni las apps de la
+  Microsoft Store, cuya carpeta (`WindowsApps`) está protegida.
+- Sin término, `fast --apps` las lista todas. `-p`, `-m`, `-s` y `--projects` no se aplican
+  a las apps.
 
 ### Filtrar por fecha de modificación
 
@@ -539,7 +565,7 @@ recorre, aunque esté oculta: `-p %APPDATA%` funciona sin `--all`.
 | ---: | --- |
 | `0` | Se encontró al menos una carpeta. |
 | `1` | La búsqueda terminó sin coincidencias. |
-| `2` | Error de uso: bandera desconocida, ruta inexistente o patrón inválido. |
+| `2` | Error de uso: bandera desconocida, ruta inexistente o patrón inválido (o, con `--apps`, no se pudo leer la lista de programas instalados). |
 | `130` | Búsqueda interrumpida con <kbd>Ctrl</kbd> + <kbd>C</kbd> (se muestran los resultados parciales). |
 
 ---
@@ -590,6 +616,7 @@ fast-folder-cli/
 │   ├── search/                    # Búsqueda concurrente, coincidencia sin acentos, proyectos y tamaños
 │   ├── period/                    # Periodos de fecha en español ("hoy", "semana", "7d")
 │   ├── pathutil/                  # Resolución de %VARIABLES%, ~ y unidades
+│   ├── apps/                      # Apps instaladas (registro de Windows) y su carpeta
 │   ├── launch/                    # Explorador, VS Code, terminal y portapapeles
 │   └── humanize/                  # Formato de números ("52,341"), tamaños ("1.5 KB") y plurales
 ├── go.mod

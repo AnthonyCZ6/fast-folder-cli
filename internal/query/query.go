@@ -1,7 +1,7 @@
 // Package query representa lo que el usuario quiere encontrar —un término,
-// si busca proyectos y un periodo de modificación— de la misma forma en la
-// línea de comandos y en el modo interactivo: lo valida, lo describe y lo
-// convierte en las opciones de una búsqueda.
+// si busca carpetas, proyectos o apps y un periodo de modificación— de la
+// misma forma en la línea de comandos y en el modo interactivo: lo valida, lo
+// describe y lo convierte en las opciones de una búsqueda.
 package query
 
 import (
@@ -26,7 +26,12 @@ const (
 	Folders Kind = iota
 	// Projects busca carpetas de proyectos (.git, go.mod, package.json...).
 	Projects
+	// Apps busca aplicaciones instaladas por su nombre (paquete apps).
+	Apps
 )
+
+// errAppsPeriod indica que se pidió filtrar apps por fecha de modificación.
+var errAppsPeriod = errors.New("las apps no se pueden filtrar por fecha de modificación")
 
 // Query es una búsqueda ya validada.
 type Query struct {
@@ -45,12 +50,16 @@ type Query struct {
 // cuenta como vacío, sino que es un error (el modo interactivo recorta el
 // término antes de llamar a New).
 //
-// Devuelve ErrEmpty si no hay nada que buscar, un error que cumple
+// Devuelve ErrEmpty si no hay nada que buscar, un error si se piden apps con
+// un periodo (las apps no tienen fecha de modificación), un error que cumple
 // errors.Is(err, period.ErrInvalid) si el periodo no es válido y, si no, el
 // error del término (por ejemplo, un patrón mal formado).
 func New(term string, kind Kind, modified string, now time.Time) (Query, error) {
 	if term == "" && kind == Folders && modified == "" {
 		return Query{}, ErrEmpty
+	}
+	if kind == Apps && modified != "" {
+		return Query{}, errAppsPeriod
 	}
 
 	q := Query{Term: term, Kind: kind}
@@ -90,6 +99,8 @@ func (q Query) Describe() string {
 	switch {
 	case q.Kind == Projects:
 		parts = append(parts, "proyectos")
+	case q.Kind == Apps:
+		parts = append(parts, "apps")
 	case q.Term == "" || q.Period.Label != "":
 		parts = append(parts, "carpetas")
 	}
@@ -109,8 +120,17 @@ func (q Query) Describe() string {
 // Found nombra n resultados de esta búsqueda: "1 carpeta encontrada",
 // "3 proyectos encontrados"...
 func (q Query) Found(n int64) string {
-	if q.Kind == Projects {
+	switch q.Kind {
+	case Projects:
 		return humanize.Count(n, "proyecto encontrado", "proyectos encontrados")
+	case Apps:
+		return humanize.Count(n, "app encontrada", "apps encontradas")
 	}
 	return humanize.Count(n, "carpeta encontrada", "carpetas encontradas")
+}
+
+// Match indica si name coincide con el término; sin término, todos coinciden.
+// Sirve para filtrar las apps por su nombre.
+func (q Query) Match(name string) bool {
+	return q.matcher == nil || q.matcher.Match(name)
 }

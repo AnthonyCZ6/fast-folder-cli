@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/apps"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/humanize"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
@@ -80,7 +81,26 @@ func (p *printer) match(n int64, r search.Result) {
 	fmt.Fprintf(p.w, "  %s %s%s\n",
 		p.paint("["+strconv.FormatInt(n, 10)+"]", ansiGreen),
 		p.path(r.Path),
-		p.project(r.Project),
+		p.tag(r.Project),
+	)
+}
+
+// appsHeader imprime qué apps se buscan (desc, por ejemplo `apps "chrome"`).
+func (p *printer) appsHeader(desc string) {
+	fmt.Fprintf(p.w, "%s %s entre los programas instalados\n\n",
+		p.paint("Buscando", ansiBold, ansiCyan),
+		p.paint(desc, ansiBold),
+	)
+}
+
+// app imprime una aplicación encontrada: el índice, su nombre resaltado, su
+// carpeta y, si se conoce, su versión.
+func (p *printer) app(n int64, a apps.App) {
+	fmt.Fprintf(p.w, "  %s %s  %s%s\n",
+		p.paint("["+strconv.FormatInt(n, 10)+"]", ansiGreen),
+		p.paint(a.Name, ansiBold, ansiGreen),
+		a.Dir,
+		p.tag(a.Version),
 	)
 }
 
@@ -90,7 +110,7 @@ func (p *printer) sizes(list []sized) {
 		fmt.Fprintf(p.w, "  %s  %s%s\n",
 			p.paint(fmt.Sprintf("%10s", humanize.Bytes(item.Bytes)), ansiBold, ansiCyan),
 			p.path(item.Path),
-			p.project(item.Project),
+			p.tag(item.Project),
 		)
 	}
 }
@@ -101,12 +121,13 @@ func (p *printer) path(path string) string {
 	return parent + p.paint(name, ansiBold, ansiGreen)
 }
 
-// project devuelve el tipo de proyecto entre paréntesis, o "" si no lo hay.
-func (p *printer) project(kind string) string {
-	if kind == "" {
+// tag devuelve s entre paréntesis tras dos espacios (el tipo de un proyecto,
+// la versión de una app), o "" si s está vacío.
+func (p *printer) tag(s string) string {
+	if s == "" {
 		return ""
 	}
-	return "  " + p.paint("("+kind+")", ansiCyan)
+	return "  " + p.paint("("+s+")", ansiCyan)
 }
 
 func (p *printer) summary(s summary) {
@@ -129,11 +150,14 @@ func (p *printer) summary(s summary) {
 		p.field("Tamaño", p.paint(total, ansiBold)+" ("+humanize.Count(s.files, "archivo", "archivos")+")")
 	}
 
-	scanned := humanize.Count(s.scanned, "carpeta", "carpetas")
-	if s.denied > 0 {
-		scanned += p.paint(" ("+humanize.Int(s.denied)+" sin acceso, omitidas)", ansiDim)
+	// Las apps no se buscan recorriendo carpetas.
+	if s.query.Kind != query.Apps {
+		scanned := humanize.Count(s.scanned, "carpeta", "carpetas")
+		if s.denied > 0 {
+			scanned += p.paint(" ("+humanize.Int(s.denied)+" sin acceso, omitidas)", ansiDim)
+		}
+		p.field("Analizadas", scanned)
 	}
-	p.field("Analizadas", scanned)
 
 	if s.opened != "" && s.openErr == nil {
 		p.field("Explorador", s.opened)

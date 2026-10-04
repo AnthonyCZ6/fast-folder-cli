@@ -58,3 +58,13 @@ func TestFindVSCode(t *testing.T) {
 		})
 	}
 }
+
+// La ruta va entre comillas pegada a "/select,": con espacios o comas en la
+// ruta, explorer.exe abriría otra carpeta.
+func TestRevealCmdLine(t *testing.T) {
+	got := revealCmdLine(`C:\Program Files\Mi App, Inc\app.exe`)
+	want := `explorer.exe /select,"C:\Program Files\Mi App, Inc\app.exe"`
+	if got != want {
+		t.Errorf("revealCmdLine = %s, want %s", got, want)
+	}
+}

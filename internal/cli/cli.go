@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/apps"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/launch"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/pathutil"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/period"
@@ -39,6 +40,14 @@ const defaultRoot = "%USERPROFILE%"
 // reemplazan para no abrir ventanas.
 var openExplorer = launch.Explorer
 
+// findApps busca las aplicaciones instaladas (--apps) y showApp abre la
+// ubicación de una (--apps --open). Las pruebas los reemplazan para no
+// depender de lo instalado ni abrir ventanas.
+var (
+	findApps = apps.Find
+	showApp  = launch.ShowApp
+)
+
 // folderSizer mide las carpetas encontradas con --size (search.Sizer): cada
 // una empieza a medirse en cuanto aparece, mientras sigue la búsqueda.
 type folderSizer interface {
@@ -59,16 +68,39 @@ type config struct {
 	version  bool
 	modified string
 	projects bool
+	apps     bool
 	size     bool
 	cdFile   string
 }
 
 // kind devuelve qué se busca según las opciones.
 func (cfg config) kind() query.Kind {
-	if cfg.projects {
+	switch {
+	case cfg.apps:
+		return query.Apps
+	case cfg.projects:
 		return query.Projects
 	}
 	return query.Folders
+}
+
+// checkApps rechaza las opciones que no tienen sentido al buscar apps, que
+// no se buscan en una carpeta sino en la lista de programas instalados.
+func (cfg config) checkApps() error {
+	if !cfg.apps {
+		return nil
+	}
+	switch {
+	case cfg.projects:
+		return errors.New("--apps y --projects no se pueden usar juntas")
+	case cfg.modified != "":
+		return errors.New("--modified no se aplica a las apps")
+	case cfg.size:
+		return errors.New("--size no se aplica a las apps")
+	case cfg.root != defaultRoot:
+		return errors.New("--path no se aplica a las apps: se buscan entre los programas instalados")
+	}
+	return nil
 }
 
 // Run ejecuta la CLI con los argumentos indicados (sin el nombre del programa)
@@ -107,6 +139,9 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 		return exitUsage
 	case err != nil:
 		return usageError(stderr, err)
+	}
+	if q.Kind == query.Apps {
+		return runApps(cfg, q, stdout, stderr)
 	}
 
 	root, err := pathutil.Resolve(cfg.root)
@@ -148,6 +183,39 @@ func runSearch(ctx context.Context, cfg config, q query.Query, root string, stdo
 	sum.scanned = stats.Scanned()
 	sum.denied = stats.Denied()
 	sum.interrupted = ctx.Err() != nil
+	sum.elapsed = time.Since(start)
+	p.summary(sum)
+	out.Flush()
+
+	if sum.openErr != nil {
+		fmt.Fprintf(stderr, "error: no se pudo abrir el Explorador: %v\n", sum.openErr)
+	}
+	return exitCode(sum)
+}
+
+// runApps busca q entre las aplicaciones instaladas, las muestra y, con
+// --open, abre en el Explorador la ubicación de la primera. Devuelve el
+// código de salida.
+func runApps(cfg config, q query.Query, stdout, stderr io.Writer) int {
+	start := time.Now()
+	list, err := findApps(q.Match)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return exitUsage
+	}
+
+	out := bufio.NewWriter(stdout)
+	p := newPrinter(out, supportsColor(stdout))
+	p.appsHeader(q.Describe())
+	for i, a := range list {
+		p.app(int64(i+1), a)
+	}
+
+	sum := summary{query: q, found: int64(len(list))}
+	if cfg.open && len(list) > 0 {
+		sum.opened = list[0].Dir
+		sum.openErr = showApp(list[0].Dir, list[0].Exe)
+	}
 	sum.elapsed = time.Since(start)
 	p.summary(sum)
 	out.Flush()
@@ -313,6 +381,7 @@ func parseArgs(args []string) (config, error) {
 	fs.StringVar(&cfg.modified, "m", "", "")
 	fs.StringVar(&cfg.modified, "modified", "", "")
 	fs.BoolVar(&cfg.projects, "projects", false, "")
+	fs.BoolVar(&cfg.apps, "apps", false, "")
 	fs.BoolVar(&cfg.size, "s", false, "")
 	fs.BoolVar(&cfg.size, "size", false, "")
 	fs.StringVar(&cfg.cdFile, "cd-file", "", "")
@@ -344,7 +413,7 @@ func parseArgs(args []string) (config, error) {
 		}
 		cfg.term = strings.Join(positional, " ")
 	}
-	return cfg, nil
+	return cfg, cfg.checkApps()
 }
 
 // flagErrors asocia el comienzo de cada error del paquete flag con su
@@ -389,6 +458,7 @@ Uso:
   fast-folder-cli -n <término> [-p <ruta>] [opciones]
   fast-folder-cli <término> [opciones]
   fast-folder-cli --projects [término] [opciones]
+  fast-folder-cli --apps [término] [-o]
 
 Si lo instalaste con el asistente o el script, también puedes escribir "fast",
 y "fcd <término>" para buscar una carpeta y entrar en ella desde la terminal.
@@ -405,7 +475,10 @@ Opciones:
                             (2026-09-01).
       --projects            Busca carpetas de proyectos (Git, Node.js, Python,
                             Go, .NET, Java, Unity...) en lugar de cualquier carpeta.
-  -s, --size                Calcula cuánto ocupa cada carpeta encontrada y las
+      --apps                Busca aplicaciones instaladas por su nombre (las de
+                            Configuración → Aplicaciones). Con -o abre su
+                            ubicación con el ejecutable seleccionado.
+  -s, --size               Calcula cuánto ocupa cada carpeta encontrada y las
                             ordena de mayor a menor.
   -a, --all                 Incluye carpetas ocultas y de sistema.
   -o, --open                Abre la primera coincidencia en el Explorador de Windows.
@@ -419,6 +492,7 @@ Ejemplos:
   fast-folder-cli --projects
   fast-folder-cli -m ayer -p %USERPROFILE%\Documents
   fast-folder-cli node_modules --size -p C:\dev
+  fast-folder-cli --apps chrome -o
 
 Códigos de salida: 0 = hay resultados, 1 = sin resultados, 2 = error de uso,
 130 = interrumpido con Ctrl+C.

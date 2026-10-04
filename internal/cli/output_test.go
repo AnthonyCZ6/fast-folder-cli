@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/apps"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
@@ -46,6 +47,26 @@ func TestPrinterMatch(t *testing.T) {
 		newPrinter(&b, tt.color).match(3, r)
 		if got := b.String(); got != tt.want {
 			t.Errorf("match (color %v) = %q, want %q", tt.color, got, tt.want)
+		}
+	}
+}
+
+func TestPrinterApp(t *testing.T) {
+	tests := []struct {
+		app   apps.App
+		color bool
+		want  string
+	}{
+		{apps.App{Name: "Paint.NET", Dir: `C:\paint.net`}, false, `  [2] Paint.NET  C:\paint.net` + "\n"},
+		{apps.App{Name: "Git", Dir: `C:\Git`, Version: "2.51"}, false, `  [2] Git  C:\Git  (2.51)` + "\n"},
+		{apps.App{Name: "Git", Dir: `C:\Git`, Version: "2.51"}, true,
+			"  \x1b[32m[2]\x1b[0m \x1b[1m\x1b[32mGit\x1b[0m  C:\\Git  \x1b[36m(2.51)\x1b[0m\n"},
+	}
+	for _, tt := range tests {
+		var b strings.Builder
+		newPrinter(&b, tt.color).app(2, tt.app)
+		if got := b.String(); got != tt.want {
+			t.Errorf("app (color %v) = %q, want %q", tt.color, got, tt.want)
 		}
 	}
 }

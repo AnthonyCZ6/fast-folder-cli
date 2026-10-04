@@ -31,6 +31,8 @@ func TestNewErrors(t *testing.T) {
 		{"", Projects, "0d", period.ErrInvalid},
 		// Un periodo con solo espacios no es "cualquier fecha": es inválido.
 		{"informe", Folders, " ", period.ErrInvalid},
+		// Las apps no tienen fecha de modificación.
+		{"chrome", Apps, "hoy", errAppsPeriod},
 	}
 	for _, tt := range tests {
 		if _, err := New(tt.term, tt.kind, tt.modified, now); !errors.Is(err, tt.want) {
@@ -61,6 +63,8 @@ func TestDescribe(t *testing.T) {
 		{"", Folders, "hoy", "carpetas modificadas hoy"},
 		{"informe", Folders, "semana", `carpetas "informe" modificadas en los últimos 7 días`},
 		{"", Projects, "ayer", "proyectos modificados ayer"},
+		{"", Apps, "", "apps"},
+		{"chrome", Apps, "", `apps "chrome"`},
 	}
 	for _, tt := range tests {
 		if got := mustNew(t, tt.term, tt.kind, tt.modified).Describe(); got != tt.want {
@@ -72,6 +76,7 @@ func TestDescribe(t *testing.T) {
 func TestFound(t *testing.T) {
 	folders := mustNew(t, "x", Folders, "")
 	projects := mustNew(t, "", Projects, "")
+	apps := mustNew(t, "", Apps, "")
 	tests := []struct {
 		got, want string
 	}{
@@ -79,11 +84,22 @@ func TestFound(t *testing.T) {
 		{folders.Found(1500), "1,500 carpetas encontradas"},
 		{projects.Found(1), "1 proyecto encontrado"},
 		{projects.Found(0), "0 proyectos encontrados"},
+		{apps.Found(1), "1 app encontrada"},
+		{apps.Found(3), "3 apps encontradas"},
 	}
 	for _, tt := range tests {
 		if tt.got != tt.want {
 			t.Errorf("Found = %q, want %q", tt.got, tt.want)
 		}
+	}
+}
+
+func TestMatch(t *testing.T) {
+	if q := mustNew(t, "cancion", Apps, ""); !q.Match("Canción Studio") || q.Match("Google Chrome") {
+		t.Error("Match debería aplicar el término sin distinguir acentos")
+	}
+	if q := mustNew(t, "", Apps, ""); !q.Match("Cualquier app") {
+		t.Error("sin término, todos los nombres deberían coincidir")
 	}
 }
 
