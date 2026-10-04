@@ -74,6 +74,7 @@ type config struct {
 	cdFile   string
 	exclude  []string // carpetas excluidas: las de --exclude y las del archivo
 	editConf bool     // --config: crear y abrir el archivo de configuración
+	json     bool     // --json: una línea JSON por resultado
 
 	// Preferencias del archivo de configuración (no vienen de las banderas).
 	prefs prefs.Config
@@ -222,7 +223,8 @@ func runSearch(ctx context.Context, cfg config, q query.Query, root string, stdo
 	results, stats := search.Start(ctx, opts)
 
 	out := bufio.NewWriter(stdout)
-	p := newPrinter(out, supportsColor(stdout))
+	p := newPrinter(out, supportsColor(stdout) && !cfg.json)
+	p.json = cfg.json
 	p.header(q.Describe(), root, cfg.all)
 
 	var sizer folderSizer
@@ -287,7 +289,8 @@ func runApps(cfg config, q query.Query, stdout, stderr io.Writer) int {
 	}
 
 	out := bufio.NewWriter(stdout)
-	p := newPrinter(out, supportsColor(stdout))
+	p := newPrinter(out, supportsColor(stdout) && !cfg.json)
+	p.json = cfg.json
 	p.appsHeader(q.Describe())
 	for i, a := range list {
 		p.app(int64(i+1), a)
@@ -470,6 +473,7 @@ func parseArgs(args []string) (config, error) {
 	fs.BoolVar(&cfg.size, "size", false, "")
 	fs.StringVar(&cfg.cdFile, "cd-file", "", "")
 	fs.BoolVar(&cfg.editConf, "config", false, "")
+	fs.BoolVar(&cfg.json, "json", false, "")
 	var exclude string
 	fs.StringVar(&exclude, "exclude", "", "")
 
@@ -576,6 +580,8 @@ Opciones:
       --exclude <a,b>       No muestra ni recorre las carpetas con esos nombres
                             (node_modules, venv...). Se suman a las del archivo
                             de configuración.
+      --json                Una línea JSON por resultado, para scripts, sin
+                            cabecera ni resumen.
       --config              Crea, si no existe, el archivo de configuración
                             (%APPDATA%\fast-folder-cli\config.toml) y lo abre.
   -o, --open                Abre la primera coincidencia en el Explorador de Windows.

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -97,6 +98,46 @@ func TestRunConfig(t *testing.T) {
 	}
 }
 
+// jsonLines decodifica cada línea de out como un objeto JSON.
+func jsonLines(t *testing.T, out string) []map[string]any {
+	t.Helper()
+	var objs []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		var obj map[string]any
+		if err := json.Unmarshal([]byte(line), &obj); err != nil {
+			t.Fatalf("línea que no es JSON: %q (%v)", line, err)
+		}
+		objs = append(objs, obj)
+	}
+	return objs
+}
+
+// --json escribe una línea JSON por resultado, sin cabecera ni resumen.
+func TestRunJSON(t *testing.T) {
+	root := makeTree(t, []string{"Música/Canción", "web/node_modules"}, map[string]int{"web/package.json": 0, "web/node_modules/a.js": 7})
+
+	objs := jsonLines(t, runOK(t, "cancion", "-p", root, "--json"))
+	if len(objs) != 1 || objs[0]["path"] != filepath.Join(root, "Música", "Canción") || objs[0]["name"] != "Canción" {
+		t.Errorf("carpetas = %v", objs)
+	}
+
+	objs = jsonLines(t, runOK(t, "--projects", "-p", root, "--json"))
+	if len(objs) != 1 || objs[0]["project"] != "Node.js" {
+		t.Errorf("proyectos = %v", objs)
+	}
+
+	objs = jsonLines(t, runOK(t, "node_modules", "--size", "-p", root, "--json"))
+	if len(objs) != 1 || objs[0]["bytes"] != float64(7) || objs[0]["files"] != float64(1) {
+		t.Errorf("tamaños = %v", objs)
+	}
+
+	stubApps(t, testApps, nil)
+	objs = jsonLines(t, runOK(t, "--apps", "chrome", "--json"))
+	if len(objs) != 1 || objs[0]["name"] != "Google Chrome" || objs[0]["exe"] != testApps[0].Exe || objs[0]["version"] != "120.0" {
+		t.Errorf("apps = %v", objs)
+	}
+}
+
 func TestParseArgs(t *testing.T) {
 	tests := []struct {
 		args []string
@@ -114,6 +155,7 @@ func TestParseArgs(t *testing.T) {
 		{[]string{"--apps", "chrome", "-o"}, config{term: "chrome", root: defaultRoot, apps: true, open: true}},
 		{[]string{"x", "--exclude", "node_modules, venv,,"}, config{term: "x", root: defaultRoot, exclude: []string{"node_modules", "venv"}}},
 		{[]string{"--config"}, config{root: defaultRoot, editConf: true}},
+		{[]string{"x", "--json"}, config{term: "x", root: defaultRoot, json: true}},
 		{[]string{"-m", "hoy", "-s", "x"}, config{term: "x", root: defaultRoot, modified: "hoy", size: true}},
 		{[]string{"--modified=semana", "--size", "--cd-file", "elegida.txt"}, config{root: defaultRoot, modified: "semana", size: true, cdFile: "elegida.txt"}},
 	}

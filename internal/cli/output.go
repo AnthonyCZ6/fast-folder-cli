@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -47,6 +48,35 @@ type summary struct {
 type printer struct {
 	w     io.Writer
 	color bool
+	json  bool // --json: una línea JSON por resultado, sin cabecera ni resumen
+}
+
+// jsonFolder es una carpeta en la salida --json. Bytes y Files solo aparecen
+// con --size (también cuando valen 0).
+type jsonFolder struct {
+	Path    string `json:"path"`
+	Name    string `json:"name"`
+	Project string `json:"project,omitempty"`
+	Bytes   *int64 `json:"bytes,omitempty"`
+	Files   *int64 `json:"files,omitempty"`
+}
+
+// jsonApp es una app en la salida --json.
+type jsonApp struct {
+	Name      string `json:"name"`
+	Dir       string `json:"dir"`
+	Exe       string `json:"exe,omitempty"`
+	Publisher string `json:"publisher,omitempty"`
+	Version   string `json:"version,omitempty"`
+}
+
+// jsonLine escribe v como una línea JSON.
+func (p *printer) jsonLine(v any) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		panic(err) // jsonFolder y jsonApp siempre se pueden codificar
+	}
+	p.w.Write(append(data, '\n'))
 }
 
 func newPrinter(w io.Writer, color bool) *printer {
@@ -63,6 +93,9 @@ func (p *printer) paint(s string, codes ...string) string {
 // header imprime qué se busca (desc, por ejemplo `"tesis"` o `proyectos`) y
 // dónde.
 func (p *printer) header(desc, root string, all bool) {
+	if p.json {
+		return
+	}
 	hidden := "excluidas"
 	if all {
 		hidden = "incluidas"
@@ -78,6 +111,10 @@ func (p *printer) header(desc, root string, all bool) {
 // match imprime una coincidencia: el índice, la ruta de la carpeta padre, el
 // nombre de la carpeta encontrada resaltado y, en el modo proyectos, su tipo.
 func (p *printer) match(n int64, r search.Result) {
+	if p.json {
+		p.jsonLine(jsonFolder{Path: r.Path, Name: filepath.Base(r.Path), Project: r.Project})
+		return
+	}
 	fmt.Fprintf(p.w, "  %s %s%s\n",
 		p.paint("["+strconv.FormatInt(n, 10)+"]", ansiGreen),
 		p.path(r.Path),
@@ -87,6 +124,9 @@ func (p *printer) match(n int64, r search.Result) {
 
 // appsHeader imprime qué apps se buscan (desc, por ejemplo `apps "chrome"`).
 func (p *printer) appsHeader(desc string) {
+	if p.json {
+		return
+	}
 	fmt.Fprintf(p.w, "%s %s entre los programas instalados\n\n",
 		p.paint("Buscando", ansiBold, ansiCyan),
 		p.paint(desc, ansiBold),
@@ -96,6 +136,10 @@ func (p *printer) appsHeader(desc string) {
 // app imprime una aplicación encontrada: el índice, su nombre resaltado, su
 // carpeta y, si se conoce, su versión.
 func (p *printer) app(n int64, a apps.App) {
+	if p.json {
+		p.jsonLine(jsonApp{Name: a.Name, Dir: a.Dir, Exe: a.Exe, Publisher: a.Publisher, Version: a.Version})
+		return
+	}
 	fmt.Fprintf(p.w, "  %s %s  %s%s\n",
 		p.paint("["+strconv.FormatInt(n, 10)+"]", ansiGreen),
 		p.paint(a.Name, ansiBold, ansiGreen),
@@ -107,6 +151,16 @@ func (p *printer) app(n int64, a apps.App) {
 // sizes imprime las carpetas con su tamaño, ya ordenadas.
 func (p *printer) sizes(list []sized) {
 	for _, item := range list {
+		if p.json {
+			p.jsonLine(jsonFolder{
+				Path:    item.Path,
+				Name:    filepath.Base(item.Path),
+				Project: item.Project,
+				Bytes:   &item.Bytes,
+				Files:   &item.Files,
+			})
+			continue
+		}
 		fmt.Fprintf(p.w, "  %s  %s%s\n",
 			p.paint(fmt.Sprintf("%10s", humanize.Bytes(item.Bytes)), ansiBold, ansiCyan),
 			p.path(item.Path),
@@ -131,6 +185,9 @@ func (p *printer) tag(s string) string {
 }
 
 func (p *printer) summary(s summary) {
+	if p.json {
+		return
+	}
 	rule := strings.Repeat("-", 64)
 	if p.color {
 		rule = strings.Repeat("─", 64)
