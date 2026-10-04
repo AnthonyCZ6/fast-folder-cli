@@ -39,6 +39,10 @@ const defaultRoot = "%USERPROFILE%"
 // reemplazan para no abrir ventanas.
 var openExplorer = launch.Explorer
 
+// folderSize calcula cuánto ocupa una carpeta (--size). Las pruebas lo
+// reemplazan para simular una interrupción mientras se mide.
+var folderSize = search.Size
+
 // config contiene las opciones ya interpretadas de la línea de comandos.
 type config struct {
 	term     string
@@ -94,15 +98,19 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	if err != nil {
 		return usageError(stderr, err)
 	}
-	return runSearch(cfg, q, root, stdout, stderr)
+
+	// Ctrl+C cancela la búsqueda (o el cálculo de tamaños) y muestra lo
+	// encontrado hasta ese momento.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	return runSearch(ctx, cfg, q, root, stdout, stderr)
 }
 
 // runSearch busca q en root, muestra cada carpeta en cuanto aparece y termina
-// con un resumen. Devuelve el código de salida.
-func runSearch(cfg config, q query.Query, root string, stdout, stderr io.Writer) int {
+// con un resumen. Si ctx se cancela, termina con lo encontrado hasta ese
+// momento. Devuelve el código de salida.
+func runSearch(ctx context.Context, cfg config, q query.Query, root string, stdout, stderr io.Writer) int {
 	start := time.Now()
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
 
 	opts := q.Options(root, cfg.all)
 	opts.Prune = cfg.size
@@ -230,7 +238,7 @@ type sized struct {
 func measure(ctx context.Context, found []search.Result) []sized {
 	list := make([]sized, len(found))
 	for i, r := range found {
-		list[i] = sized{Result: r, SizeInfo: search.Size(ctx, r.Path)}
+		list[i] = sized{Result: r, SizeInfo: folderSize(ctx, r.Path)}
 	}
 	slices.SortStableFunc(list, func(a, b sized) int {
 		return cmp.Compare(b.Bytes, a.Bytes)
