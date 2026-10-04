@@ -77,8 +77,6 @@ jobs:
   lint:
     name: Análisis adicional (staticcheck, govulncheck)
     runs-on: ubuntu-latest
-    # Por ahora solo informa: sus avisos no bloquean las pruebas ni el release.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
 
