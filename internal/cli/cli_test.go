@@ -193,7 +193,7 @@ func TestRunExitCodes(t *testing.T) {
 		{[]string{"-n", "nada-coincide", "-p", root}, exitNoMatch},
 		{[]string{"-n", "x", "-p", filepath.Join(root, "no-existe")}, exitUsage},
 		{[]string{"-n", "[roto", "-p", root}, exitUsage},
-		{[]string{}, exitUsage},
+		{[]string{}, exitFound},     // sin argumentos ni terminal: la ayuda, y termina bien
 		{[]string{"-a"}, exitUsage}, // sin término y sin terminal no hay modo interactivo
 		{[]string{"-m", "mañana", "-p", root}, exitUsage},
 		{[]string{"--cd-file", "elegida.txt"}, exitUsage},

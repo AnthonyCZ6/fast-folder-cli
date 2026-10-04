@@ -568,7 +568,7 @@ recorre, aunque esté oculta: `-p %APPDATA%` funciona sin `--all`.
 
 | Código | Significado |
 | ---: | --- |
-| `0` | Se encontró al menos una carpeta. |
+| `0` | Se encontró al menos una carpeta. También sin argumentos fuera de una terminal: muestra la ayuda por la salida estándar. |
 | `1` | La búsqueda terminó sin coincidencias. |
 | `2` | Error de uso: bandera desconocida, ruta inexistente o patrón inválido (o, con `--apps`, no se pudo leer la lista de programas instalados). |
 | `130` | Búsqueda interrumpida con <kbd>Ctrl</kbd> + <kbd>C</kbd> (se muestran los resultados parciales). |

@@ -154,10 +154,13 @@ func (cfg config) checkApps() error {
 // Run ejecuta la CLI con los argumentos indicados (sin el nombre del programa)
 // y devuelve el código de salida del proceso.
 func Run(args []string, stdout, stderr io.Writer, version string) int {
-	// Sin argumentos y en una terminal se abre el modo interactivo, que se
-	// maneja con las flechas. Si la salida está redirigida se muestra la ayuda.
-	if len(args) == 0 && isInteractive(stdout) {
-		return runInteractive(config{root: defaultRoot}, stdout, stderr, version)
+	// Sin argumentos y en una terminal se abre el modo interactivo (más
+	// abajo, porque no hay nada que buscar).
+	if len(args) == 0 && !isInteractive(stdout) {
+		// Sin argumentos y sin terminal (por ejemplo, al comprobar que el
+		// programa quedó instalado) se muestra la ayuda y se termina bien.
+		printUsage(stdout)
+		return exitFound
 	}
 
 	cfg, err := parseArgs(args)

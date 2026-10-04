@@ -128,6 +128,15 @@ func TestVersion(t *testing.T) {
 	}
 }
 
+// Sin argumentos y sin terminal, como al comprobar que el programa quedó
+// instalado, muestra la ayuda por stdout y termina con 0.
+func TestNoArgsShowsHelp(t *testing.T) {
+	r := mustRun(t, 0)
+	if !strings.Contains(r.stdout, "Uso:") || r.stderr != "" {
+		t.Errorf("stdout = %q, stderr = %q; want la ayuda por stdout", r.stdout, r.stderr)
+	}
+}
+
 func TestExitCodes(t *testing.T) {
 	root := t.TempDir()
 	tests := []struct {
@@ -136,7 +145,8 @@ func TestExitCodes(t *testing.T) {
 	}{
 		{[]string{"--help"}, 0},
 		{[]string{"-n", "nada-coincide", "-p", root}, 1},
-		{[]string{}, 2}, // sin terminal no se abre el modo interactivo
+		{[]string{}, 0}, // sin terminal: la ayuda (lo que comprueba la validación de winget)
+		{[]string{"-a"}, 2},
 		{[]string{"-x"}, 2},
 		{[]string{"-n", "x", "-p", filepath.Join(root, "no-existe")}, 2},
 		{[]string{"-m", "mañana", "-p", root}, 2},
