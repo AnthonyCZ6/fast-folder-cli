@@ -12,6 +12,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/apps"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/launch"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
@@ -28,7 +29,8 @@ type Options struct {
 }
 
 // Run abre la interfaz interactiva y bloquea hasta que el usuario sale. Si
-// opts incluye un término, proyectos o una fecha, la búsqueda empieza al abrir.
+// opts incluye un término, proyectos, apps o una fecha, la búsqueda empieza
+// al abrir.
 func Run(version string, opts Options) error {
 	m := newModel(version, defaultLocations(), defaultActions())
 	m = m.apply(opts)
@@ -47,13 +49,17 @@ const (
 	screenResults
 )
 
-// actions agrupa lo que se puede hacer con una carpeta de los resultados. En
-// las pruebas se reemplazan por funciones que solo registran la llamada.
+// actions agrupa lo que se puede hacer con los resultados (abrir una carpeta,
+// copiar su ruta, abrir la ubicación de una app...) y la búsqueda de apps
+// instaladas. En las pruebas se reemplazan por funciones que solo registran
+// la llamada o devuelven una lista fija.
 type actions struct {
 	explorer func(string) error
 	code     func(string) error
 	terminal func(string) error
 	copyPath func(string) error
+	showApp  func(dir, exe string) error
+	findApps func(match func(string) bool) ([]apps.App, error)
 }
 
 func defaultActions() actions {
@@ -62,6 +68,8 @@ func defaultActions() actions {
 		code:     launch.VSCode,
 		terminal: launch.Terminal,
 		copyPath: launch.CopyPath,
+		showApp:  launch.ShowApp,
+		findApps: apps.Find,
 	}
 }
 
@@ -92,6 +100,7 @@ type model struct {
 	query     query.Query // lo que se busca, para la cabecera y el recuento
 	root      string
 	results   []search.Result
+	appList   []apps.App // en una búsqueda de apps, la app de cada resultado
 	cursor    int
 	offset    int
 	searching bool
@@ -206,6 +215,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, waitForResults(msg.gen, m.pending)
+
+	case appsMsg:
+		if msg.gen == m.gen {
+			m.showApps(msg)
+		}
+		return m, nil
 
 	case detailsMsg:
 		if msg.gen != m.detailsGen {

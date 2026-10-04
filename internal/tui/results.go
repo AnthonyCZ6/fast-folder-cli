@@ -33,7 +33,7 @@ func (m model) updateResults(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "enter", "right":
 		return m.choose()
 	case "e":
-		return m.act(m.acts.explorer, "Abierto en el Explorador: ", "No se pudo abrir el Explorador: ")
+		return m.openSelected()
 	case "c":
 		return m.act(m.acts.copyPath, "Ruta copiada: ", "No se pudo copiar la ruta: ")
 	case "v":
@@ -63,7 +63,7 @@ func (m model) choose() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.cdFile == "" {
-		return m.act(m.acts.explorer, "Abierto en el Explorador: ", "No se pudo abrir el Explorador: ")
+		return m.openSelected()
 	}
 	if err := os.WriteFile(m.cdFile, []byte(path), 0o600); err != nil {
 		m.status, m.statusErr = "No se pudo guardar la carpeta elegida: "+err.Error(), true
@@ -72,6 +72,17 @@ func (m model) choose() (tea.Model, tea.Cmd) {
 	m.cancelSearch()
 	m.cancelDetails()
 	return m, tea.Quit
+}
+
+// openSelected abre el resultado seleccionado en el Explorador. En una
+// búsqueda de apps abre su ubicación con el ejecutable seleccionado.
+func (m model) openSelected() (tea.Model, tea.Cmd) {
+	open := m.acts.explorer
+	if m.cursor < len(m.appList) {
+		a := m.appList[m.cursor]
+		open = func(string) error { return m.acts.showApp(a.Dir, a.Exe) }
+	}
+	return m.act(open, "Abierto en el Explorador: ", "No se pudo abrir el Explorador: ")
 }
 
 // act ejecuta fn con la carpeta seleccionada y muestra el resultado en la

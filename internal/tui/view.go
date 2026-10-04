@@ -12,7 +12,6 @@ import (
 
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/humanize"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
-	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
 
 // Nota: solo se usan símbolos presentes en las fuentes de la consola clásica
@@ -37,37 +36,21 @@ func (m model) viewForm() string {
 	}
 	b.WriteString(m.line(m.header(styleDim.Render(version))) + "\n\n")
 
-	valueW := 0
-	for _, k := range kindOptions {
-		valueW = max(valueW, ansi.StringWidth(k.label))
-	}
-	for _, loc := range m.locations {
-		valueW = max(valueW, ansi.StringWidth(loc.Label))
-	}
-	for _, d := range m.dates {
-		valueW = max(valueW, ansi.StringWidth(d.label))
-	}
-
+	valueW := m.valueWidth()
 	b.WriteString(m.line(m.formRow(fieldTerm, "Buscar", m.input.View(), "")) + "\n")
 	if len(m.locations) > 0 {
 		loc := m.locations[m.locIndex]
-		value := selector(loc.Label, m.focus == fieldLocation, valueW)
-		b.WriteString(m.line(m.formRow(fieldLocation, "Ubicación", value, loc.Path)) + "\n")
+		b.WriteString(m.optionRow(fieldLocation, "Ubicación", loc.Label, loc.Path, valueW) + "\n")
 	}
-
 	kind := kindOptions[m.kindIndex]
-	value := selector(kind.label, m.focus == fieldKind, valueW)
-	b.WriteString(m.line(m.formRow(fieldKind, "Tipo", value, kind.hint)) + "\n")
-
-	value = selector(m.dates[m.dateIndex].label, m.focus == fieldDate, valueW)
-	b.WriteString(m.line(m.formRow(fieldDate, "Modificada", value, "fecha de modificación de la carpeta")) + "\n")
-
+	b.WriteString(m.optionRow(fieldKind, "Tipo", kind.label, kind.hint, valueW) + "\n")
+	date := m.dates[m.dateIndex].label
+	b.WriteString(m.optionRow(fieldDate, "Modificada", date, "fecha de modificación de la carpeta", valueW) + "\n")
 	hidden := "No"
 	if m.hidden {
 		hidden = "Sí"
 	}
-	value = selector(hidden, m.focus == fieldHidden, valueW)
-	b.WriteString(m.line(m.formRow(fieldHidden, "Ocultas", value, "carpetas ocultas y de sistema")) + "\n")
+	b.WriteString(m.optionRow(fieldHidden, "Ocultas", hidden, "carpetas ocultas y de sistema", valueW) + "\n")
 
 	b.WriteString("\n")
 	if m.formErr != "" {
@@ -75,6 +58,33 @@ func (m model) viewForm() string {
 	}
 	b.WriteString(m.line(help("↑↓", "moverse", "←→", "cambiar opción", "Enter", "buscar", "Esc", "salir")))
 	return b.String()
+}
+
+// valueWidth es el ancho de la opción más larga de los campos, para que las
+// sugerencias queden alineadas.
+func (m model) valueWidth() int {
+	w := 0
+	for _, k := range kindOptions {
+		w = max(w, ansi.StringWidth(k.label))
+	}
+	for _, loc := range m.locations {
+		w = max(w, ansi.StringWidth(loc.Label))
+	}
+	for _, d := range m.dates {
+		w = max(w, ansi.StringWidth(d.label))
+	}
+	return w
+}
+
+// optionRow muestra un campo que se cambia con ←→: su valor y una sugerencia.
+// Un campo que no se aplica a lo que se busca (con Apps, todos salvo Buscar y
+// Tipo) se muestra atenuado.
+func (m model) optionRow(f field, label, value, hint string, valueW int) string {
+	if !m.applies(f) {
+		row := fmt.Sprintf("%-11s", label) + selector(value, false, valueW) + "  no se aplica a las apps"
+		return m.line("   " + styleDim.Render(row))
+	}
+	return m.line(m.formRow(f, label, selector(value, m.focus == f, valueW), hint))
 }
 
 func (m model) formRow(f field, label, value, hint string) string {
@@ -103,32 +113,20 @@ func selector(value string, focused bool, width int) string {
 
 func (m model) viewResults() string {
 	var b strings.Builder
-	where := styleName.Render(capitalize(m.query.Describe())) + " en " + m.root
-	if m.hidden {
-		where += styleDim.Render(" (con ocultas)")
-	}
-	b.WriteString(m.line(m.header(where)) + "\n\n")
+	b.WriteString(m.line(m.header(m.resultsTitle())) + "\n\n")
 
 	h := m.listHeight()
 	lines := 0
 	if len(m.results) == 0 {
-		if m.searching {
-			b.WriteString(m.line("   "+styleDim.Render("Buscando...")) + "\n")
-			lines = 1
-		} else {
-			empty := "No se encontró ninguna carpeta con ese nombre."
-			if m.query.Kind == query.Projects {
-				empty = "No se encontró ningún proyecto."
-			}
-			b.WriteString(m.line("   "+styleWarn.Render(empty)) + "\n")
-			b.WriteString(m.line("   "+styleDim.Render("Pulsa ← para cambiar la búsqueda: prueba otra ubicación, otra fecha o incluir las ocultas.")) + "\n")
-			lines = 2
+		for _, l := range m.emptyLines() {
+			b.WriteString(m.line(l) + "\n")
+			lines++
 		}
 	} else {
 		nameW := min(max(m.width*2/5, 12), 40)
 		end := min(m.offset+h, len(m.results))
 		for i := m.offset; i < end; i++ {
-			b.WriteString(m.resultLine(m.results[i], i == m.cursor, nameW) + "\n")
+			b.WriteString(m.resultLine(i, nameW) + "\n")
 			lines++
 		}
 	}
@@ -154,22 +152,64 @@ func (m model) viewResults() string {
 	return b.String()
 }
 
-func (m model) resultLine(r search.Result, selected bool, nameW int) string {
-	name := ansi.Truncate(filepath.Base(r.Path), nameW, "...")
-	name += strings.Repeat(" ", max(nameW-ansi.StringWidth(name), 0))
-	kind := ""
-	if r.Project != "" {
-		kind = r.Project + "  "
+// resultsTitle describe en la cabecera qué se busca y dónde.
+func (m model) resultsTitle() string {
+	title := styleName.Render(capitalize(m.query.Describe()))
+	if m.query.Kind == query.Apps {
+		return title + " entre los programas instalados"
 	}
-	parent := truncateLeft(filepath.Dir(r.Path), m.width-nameW-6-ansi.StringWidth(kind))
-	if selected {
-		line := " ► " + name + "  " + kind + parent
+	title += " en " + m.root
+	if m.hidden {
+		title += styleDim.Render(" (con ocultas)")
+	}
+	return title
+}
+
+// emptyLines son las líneas de una lista sin resultados: un aviso mientras se
+// busca o, al terminar, qué se puede probar.
+func (m model) emptyLines() []string {
+	if m.searching {
+		return []string{"   " + styleDim.Render("Buscando...")}
+	}
+	empty := "No se encontró ninguna carpeta con ese nombre."
+	hint := "Pulsa ← para cambiar la búsqueda: prueba otra ubicación, otra fecha o incluir las ocultas."
+	switch m.query.Kind {
+	case query.Projects:
+		empty = "No se encontró ningún proyecto."
+	case query.Apps:
+		empty, hint = "No se encontró ninguna app con ese nombre.", "Pulsa ← para cambiar la búsqueda."
+	}
+	return []string{"   " + styleWarn.Render(empty), "   " + styleDim.Render(hint)}
+}
+
+func (m model) resultLine(i, nameW int) string {
+	name, tag, where := m.resultParts(i)
+	name = ansi.Truncate(name, nameW, "...")
+	name += strings.Repeat(" ", max(nameW-ansi.StringWidth(name), 0))
+	if tag != "" {
+		tag += "  "
+	}
+	where = truncateLeft(where, m.width-nameW-6-ansi.StringWidth(tag))
+	if i == m.cursor {
+		line := " ► " + name + "  " + tag + where
 		return styleCursor.Render(padRight(line, m.width))
 	}
-	if kind != "" {
-		kind = styleOK.Render(kind)
+	if tag != "" {
+		tag = styleOK.Render(tag)
 	}
-	return m.line("   " + styleName.Render(name) + "  " + kind + styleDim.Render(parent))
+	return m.line("   " + styleName.Render(name) + "  " + tag + styleDim.Render(where))
+}
+
+// resultParts devuelve las columnas del resultado i: el nombre, la etiqueta
+// (el tipo de un proyecto) y dónde está. De una app se muestran su nombre y
+// su carpeta.
+func (m model) resultParts(i int) (name, tag, where string) {
+	if i < len(m.appList) {
+		a := m.appList[i]
+		return a.Name, "", a.Dir
+	}
+	r := m.results[i]
+	return filepath.Base(r.Path), r.Project, filepath.Dir(r.Path)
 }
 
 func (m model) statsLine() string {
@@ -178,7 +218,10 @@ func (m model) statsLine() string {
 	if m.stats != nil {
 		scanned, denied = m.stats.Scanned(), m.stats.Denied()
 	}
-	details := " · " + humanize.Int(scanned) + " analizadas"
+	details := ""
+	if m.query.Kind != query.Apps { // las apps no se buscan recorriendo carpetas
+		details = " · " + humanize.Int(scanned) + " analizadas"
+	}
 	if denied > 0 {
 		details += " · " + humanize.Int(denied) + " sin acceso"
 	}

@@ -28,6 +28,7 @@ type kindOption struct {
 var kindOptions = []kindOption{
 	{"Carpetas", "cualquier carpeta cuyo nombre coincida", query.Folders},
 	{"Proyectos", "carpetas con .git, package.json, go.mod... (el nombre es opcional)", query.Projects},
+	{"Apps", "aplicaciones instaladas: Enter abre su ubicación (el nombre es opcional)", query.Apps},
 }
 
 // dateOption es una opción del campo Fecha.
@@ -51,9 +52,9 @@ func (m model) updateForm(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.startSearch()
 	case "up", "shift+tab":
-		return m.setFocus((m.focus + fieldCount - 1) % fieldCount)
+		return m.setFocus(m.nextField(-1))
 	case "down", "tab":
-		return m.setFocus((m.focus + 1) % fieldCount)
+		return m.setFocus(m.nextField(1))
 	case "left", "right":
 		step := 1
 		if msg.String() == "left" {
@@ -97,6 +98,24 @@ func (m model) updateForm(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // kind devuelve lo que se busca según el campo Tipo.
 func (m model) kind() query.Kind {
 	return kindOptions[m.kindIndex].kind
+}
+
+// applies indica si el campo f se aplica a lo que se busca: las apps no se
+// buscan en una ubicación, ni por fecha, ni entre carpetas ocultas.
+func (m model) applies(f field) bool {
+	return m.kind() != query.Apps || f == fieldTerm || f == fieldKind
+}
+
+// nextField devuelve el campo al que lleva ↓ (step 1) o ↑ (step -1) desde el
+// actual, saltando los que no se aplican.
+func (m model) nextField(step int) field {
+	f := m.focus
+	for {
+		f = (f + field(step) + fieldCount) % fieldCount
+		if m.applies(f) {
+			return f
+		}
+	}
 }
 
 func (m model) setFocus(f field) (tea.Model, tea.Cmd) {

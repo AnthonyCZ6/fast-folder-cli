@@ -11,6 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/apps"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/humanize"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/period"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
@@ -34,10 +35,21 @@ type detailsMsg struct {
 	err  error
 }
 
+// appsMsg trae las aplicaciones instaladas que encontró la búsqueda gen.
+type appsMsg struct {
+	gen  int
+	list []apps.App
+	err  error
+}
+
 func (m model) startSearch() (tea.Model, tea.Cmd) {
 	// Un término con solo espacios cuenta como vacío: se pide escribir algo.
 	term := strings.TrimSpace(m.input.Value())
-	q, err := query.New(term, m.kind(), m.dates[m.dateIndex].value, time.Now())
+	modified := m.dates[m.dateIndex].value
+	if m.kind() == query.Apps {
+		modified = "" // el campo Modificada no se aplica a las apps
+	}
+	q, err := query.New(term, m.kind(), modified, time.Now())
 	switch {
 	case errors.Is(err, query.ErrEmpty):
 		m.formErr = "Escribe el nombre (o parte del nombre) de la carpeta que buscas, o elige Proyectos o una fecha."
@@ -49,23 +61,33 @@ func (m model) startSearch() (tea.Model, tea.Cmd) {
 		m.formErr = err.Error()
 		return m.setFocus(fieldTerm)
 	}
+
+	m.cancelSearch()
+	if q.Kind == query.Apps {
+		m = m.begin(q, "")
+		return m.withSpinner(findApps(m.gen, m.acts.findApps, q.Match))
+	}
 	if len(m.locations) == 0 {
 		m.formErr = "No hay ubicaciones disponibles para buscar."
 		return m, nil
 	}
 
-	m.cancelSearch()
 	ctx, cancel := context.WithCancel(context.Background())
 	loc := m.locations[m.locIndex]
 	ch, stats := search.Start(ctx, q.Options(loc.Path, m.hidden))
+	m = m.begin(q, loc.Path)
+	m.pending, m.cancel, m.stats = ch, cancel, stats
+	return m.withSpinner(waitForResults(m.gen, ch))
+}
 
+// begin pasa a la pantalla de resultados, vacía, de una búsqueda nueva de q
+// en root.
+func (m model) begin(q query.Query, root string) model {
 	m.gen++
-	m.pending = ch
-	m.cancel = cancel
-	m.stats = stats
+	m.pending, m.stats = nil, nil
 	m.query = q
-	m.root = loc.Path
-	m.results = nil
+	m.root = root
+	m.results, m.appList = nil, nil
 	m.cursor, m.offset = 0, 0
 	m.searching = true
 	m.started = time.Now()
@@ -73,13 +95,44 @@ func (m model) startSearch() (tea.Model, tea.Cmd) {
 	m.formErr = ""
 	m.screen = screenResults
 	m.input.Blur()
+	return m
+}
 
-	cmds := []tea.Cmd{waitForResults(m.gen, ch)}
+// withSpinner devuelve cmd junto con el giro del spinner, si no estaba
+// girando ya.
+func (m model) withSpinner(cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	cmds := []tea.Cmd{cmd}
 	if !m.ticking {
 		m.ticking = true
 		cmds = append(cmds, m.spinner.Tick)
 	}
 	return m, tea.Batch(cmds...)
+}
+
+// findApps busca con find, en segundo plano, las aplicaciones instaladas
+// cuyo nombre acepta match.
+func findApps(gen int, find func(func(string) bool) ([]apps.App, error), match func(string) bool) tea.Cmd {
+	return func() tea.Msg {
+		list, err := find(match)
+		return appsMsg{gen: gen, list: list, err: err}
+	}
+}
+
+// showApps muestra las aplicaciones encontradas. Cada una es también un
+// resultado con su carpeta, para que c, v, t, d y fcd funcionen igual que con
+// una carpeta.
+func (m *model) showApps(msg appsMsg) {
+	m.searching = false
+	m.elapsed = time.Since(m.started)
+	if msg.err != nil {
+		m.status, m.statusErr = "No se pudieron buscar las apps: "+msg.err.Error(), true
+		return
+	}
+	m.appList = msg.list
+	m.results = make([]search.Result, len(msg.list))
+	for i, a := range msg.list {
+		m.results[i] = search.Result{Path: a.Dir}
+	}
 }
 
 func (m *model) cancelSearch() {

@@ -283,8 +283,10 @@ y se abre una pantalla de búsqueda que se maneja sin escribir comandos:
 1. Escribe el nombre (o parte del nombre) de la carpeta. No hace falta poner acentos.
 2. Con **↓** baja a **Ubicación** y elige dónde buscar con **← →**: tu perfil, Escritorio,
    Documentos, Descargas, la carpeta actual, AppData, ProgramData o cualquier unidad (C:, D:...).
-3. En **Tipo** elige **Proyectos** para buscar solo [carpetas de proyectos](#buscar-proyectos);
-   así el nombre es opcional y, sin él, aparecen todos.
+3. En **Tipo** elige **Proyectos** para buscar solo [carpetas de proyectos](#buscar-proyectos),
+   o **Apps** para buscar [aplicaciones instaladas](#buscar-apps-instaladas); así el nombre
+   es opcional y, sin él, aparecen todos. Con **Apps**, Enter abre la ubicación de la app y
+   los campos Ubicación, Modificada y Ocultas no se aplican.
 4. En **Modificada** elige **Hoy**, **Ayer**, **Últimos 7 días** o **Últimos 30 días** para
    ver solo las carpetas modificadas en ese periodo.
 5. En **Ocultas** actívalas si también quieres buscar en carpetas ocultas y de sistema.
@@ -452,9 +454,10 @@ personal no oculte todo lo demás.
 
 ### Buscar apps instaladas
 
-`--apps` busca entre los programas instalados (los mismos que muestra **Configuración →
-Aplicaciones**) en lugar de recorrer carpetas, así que responde al instante. Con `-o` abre
-su ubicación en el Explorador con el ejecutable seleccionado:
+`--apps` (o **Tipo: Apps** en el modo interactivo) busca entre los programas instalados
+(los mismos que muestra **Configuración → Aplicaciones**) en lugar de recorrer carpetas, así
+que responde al instante. Con `-o` (o Enter en el modo interactivo) abre su ubicación en el
+Explorador con el ejecutable seleccionado:
 
 ```text
 > fast --apps chrome -o
@@ -470,6 +473,8 @@ su ubicación en el Explorador con el ejecutable seleccionado:
   Microsoft Store, cuya carpeta (`WindowsApps`) está protegida.
 - Sin término, `fast --apps` las lista todas. `-p`, `-m`, `-s` y `--projects` no se aplican
   a las apps.
+- `fcd --apps steam` te deja en la carpeta de la app elegida, por ejemplo para ejecutar
+  sus herramientas desde la terminal.
 
 ### Filtrar por fecha de modificación
 

@@ -11,6 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/apps"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
@@ -54,10 +55,13 @@ func send(m model, msgs ...tea.Msg) model {
 	return m
 }
 
-// recorder registra las acciones ejecutadas sobre las carpetas, como
-// "explorer:C:\ruta".
+// recorder registra las acciones ejecutadas sobre los resultados, como
+// "explorer:C:\ruta" o "show:C:\carpeta|C:\carpeta\app.exe", y hace que la
+// búsqueda de apps encuentre las de apps (o falle con appsErr).
 type recorder struct {
-	calls []string
+	calls   []string
+	apps    []apps.App
+	appsErr error
 }
 
 func (r *recorder) actions() actions {
@@ -72,6 +76,19 @@ func (r *recorder) actions() actions {
 		code:     record("code"),
 		terminal: record("terminal"),
 		copyPath: record("copy"),
+		showApp: func(dir, exe string) error {
+			r.calls = append(r.calls, "show:"+dir+"|"+exe)
+			return nil
+		},
+		findApps: func(match func(string) bool) ([]apps.App, error) {
+			var found []apps.App
+			for _, a := range r.apps {
+				if match(a.Name) {
+					found = append(found, a)
+				}
+			}
+			return found, r.appsErr
+		},
 	}
 }
 
@@ -223,7 +240,7 @@ func drain(t *testing.T, m model, cmd tea.Cmd) model {
 		switch msg := c().(type) {
 		case tea.BatchMsg:
 			queue = append(queue, msg...)
-		case resultsMsg:
+		case resultsMsg, appsMsg:
 			next, cmd := m.Update(msg)
 			m = next.(model)
 			queue = append(queue, cmd)
@@ -311,6 +328,102 @@ func TestProjectsWithoutTerm(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Errorf("la vista no contiene %q:\n%s", want, view)
 		}
+	}
+}
+
+var testApps = []apps.App{
+	{Name: "Google Chrome", Dir: `C:\Chrome\Application`, Exe: `C:\Chrome\Application\chrome.exe`},
+	{Name: "Paint.NET", Dir: `C:\paint.net`},
+}
+
+// selectApps elige Tipo: Apps (Carpetas → Proyectos → Apps) desde el campo de
+// búsqueda, y deja el foco en Tipo.
+func selectApps(m model) model {
+	return send(m, keys("down", "down", "right", "right")...)
+}
+
+func TestAppsSearch(t *testing.T) {
+	m, rec := newTestModel(testLocations...)
+	rec.apps = testApps
+	m = send(m, typeText("chrome")...)
+	m = selectApps(m)
+	if m.focus != fieldKind || m.kind() != query.Apps {
+		t.Fatalf("foco = %v tipo = %v, want Tipo: Apps", m.focus, m.kind())
+	}
+	m = runSearch(t, m)
+
+	if len(m.results) != 1 || m.results[0].Path != testApps[0].Dir {
+		t.Fatalf("resultados = %+v, want la carpeta de Google Chrome", m.results)
+	}
+	view := m.View().Content
+	for _, want := range []string{`Apps "chrome"`, "entre los programas instalados", "Google Chrome", testApps[0].Dir, "1 app encontrada"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("la vista no contiene %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "analizadas") {
+		t.Errorf("con apps no se analizan carpetas:\n%s", view)
+	}
+
+	// Enter y e abren la ubicación con el ejecutable seleccionado; c copia la
+	// carpeta.
+	m = send(m, keys("enter", "e", "c")...)
+	show := "show:" + testApps[0].Dir + "|" + testApps[0].Exe
+	if want := []string{show, show, "copy:" + testApps[0].Dir}; !slices.Equal(rec.calls, want) {
+		t.Errorf("acciones = %v, want %v", rec.calls, want)
+	}
+}
+
+// Con Apps, la ubicación, la fecha y las ocultas no se aplican: se muestran
+// atenuadas y ↑↓ las saltan.
+func TestAppsFormSkipsFields(t *testing.T) {
+	m, _ := newTestModel(testLocations...)
+	m = selectApps(m)
+
+	m = send(m, keys("down")...)
+	if m.focus != fieldTerm {
+		t.Errorf("↓ desde Tipo: foco = %v, want Buscar", m.focus)
+	}
+	m = send(m, keys("down")...)
+	if m.focus != fieldKind {
+		t.Errorf("↓ desde Buscar: foco = %v, want Tipo", m.focus)
+	}
+	m = send(m, keys("up", "up")...)
+	if m.focus != fieldKind {
+		t.Errorf("↑↑ desde Tipo: foco = %v, want Tipo", m.focus)
+	}
+	if view := m.View().Content; strings.Count(view, "no se aplica a las apps") != 3 {
+		t.Errorf("deberían verse atenuados Ubicación, Modificada y Ocultas:\n%s", view)
+	}
+}
+
+func TestAppsSearchError(t *testing.T) {
+	m, rec := newTestModel(testLocations...)
+	rec.appsErr = errors.New("sin registro")
+	m = runSearch(t, selectApps(m))
+	if m.searching || !m.statusErr || !strings.Contains(m.status, "sin registro") {
+		t.Errorf("estado = %q (error %v, buscando %v), want el error", m.status, m.statusErr, m.searching)
+	}
+}
+
+// fcd --apps paint abre el modo interactivo con la búsqueda hecha, y Enter
+// guarda la carpeta de la app para que el script entre en ella.
+func TestApplyAppsOptions(t *testing.T) {
+	cdFile := filepath.Join(t.TempDir(), "elegida.txt")
+	m, rec := newTestModel(testLocations...)
+	rec.apps = testApps
+	m = m.apply(Options{Term: "paint", Kind: query.Apps, CDFile: cdFile})
+	m = drain(t, m, m.initCmd)
+	if m.kind() != query.Apps || len(m.results) != 1 {
+		t.Fatalf("tipo = %v, resultados = %+v; want Paint.NET", m.kind(), m.results)
+	}
+
+	m = send(m, keys("enter")...)
+	if got, err := os.ReadFile(cdFile); err != nil || string(got) != testApps[1].Dir {
+		t.Errorf("carpeta guardada = %q, %v; want %q", got, err, testApps[1].Dir)
+	}
+	if len(rec.calls) != 0 {
+		t.Errorf("en el modo fcd Enter no debería abrir nada: %v", rec.calls)
 	}
 }
 
