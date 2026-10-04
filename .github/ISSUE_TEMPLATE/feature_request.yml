@@ -1,0 +1,23 @@
+name: ✨ Proponer una mejora
+description: Una función nueva o un cambio en una que ya existe.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Qué problema resuelve
+      description: Qué intentas hacer y por qué hoy cuesta.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Cómo te lo imaginas
+      description: Por ejemplo, una bandera nueva, una tecla en el modo interactivo o un cambio en la salida.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas
+      description: Cómo lo resuelves ahora, u otras opciones que pensaste.

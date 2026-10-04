@@ -1,0 +1,72 @@
+name: 🐛 Reportar un error
+description: Algo no funciona como dice el README.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por avisar. Antes de enviarlo, revisa que no haya un
+        [issue parecido](https://github.com/AnthonyCZ6/fast-folder-cli/issues?q=is%3Aissue).
+        Si es un problema de seguridad, **no lo publiques aquí**: sigue la
+        [política de seguridad](https://github.com/AnthonyCZ6/fast-folder-cli/security/policy).
+  - type: input
+    id: version
+    attributes:
+      label: Versión de fast-folder-cli
+      description: La que muestra `fast-folder-cli --version`.
+      placeholder: fast-folder-cli v1.2.6
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Cómo lo instalaste
+      options:
+        - Asistente de instalación (fast-folder-cli-setup.exe)
+        - Instalador de un solo comando (install.ps1)
+        - winget
+        - go install
+        - Descarga manual del .exe
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Versión de Windows
+      description: Ejecuta `winver` para verla.
+      placeholder: Windows 11 24H2, x64
+    validations:
+      required: true
+  - type: dropdown
+    id: shell
+    attributes:
+      label: Dónde lo ejecutas
+      multiple: true
+      options:
+        - PowerShell 7
+        - Windows PowerShell 5.1
+        - cmd
+        - Menú contextual del Explorador
+        - Otro
+  - type: textarea
+    id: what
+    attributes:
+      label: Qué pasó
+      description: Qué esperabas y qué pasó en realidad.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos para reproducirlo
+      placeholder: |
+        1. Ejecuto `fast informe -p C:\dev`
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Salida o mensaje de error
+      description: Copia aquí lo que muestra la terminal. Revisa que no incluya rutas o nombres que prefieras no publicar.
+      render: text

@@ -575,8 +575,10 @@ recorre, aunque esté oculta: `-p %APPDATA%` funciona sin `--all`.
 ```text
 fast-folder-cli/
 ├── .github/
-│   ├── workflows/release.yml      # Pruebas, compilación y publicación de versiones
-│   └── scripts/release-notes.sh   # Notas de versión a partir de los commits
+│   ├── workflows/                 # Pruebas (ci.yml), publicación (release.yml) y benchmarks (bench.yml)
+│   ├── scripts/release-notes.sh   # Notas de versión a partir de los commits
+│   ├── ISSUE_TEMPLATE/            # Formularios para reportar errores y proponer mejoras
+│   └── dependabot.yml             # Actualizaciones semanales de módulos de Go y acciones
 ├── installer/fast-folder-cli.iss  # Asistente de instalación (Inno Setup)
 ├── install.ps1                    # Instalador de un solo comando para Windows
 ├── shell/                         # Comando fcd para PowerShell (fcd.ps1) y cmd (fcd.cmd)
@@ -592,6 +594,7 @@ fast-folder-cli/
 │   └── humanize/                  # Formato de números ("52,341"), tamaños ("1.5 KB") y plurales
 ├── go.mod
 ├── LICENSE
+├── SECURITY.md                    # Cómo reportar una vulnerabilidad
 └── README.md
 ```
 
