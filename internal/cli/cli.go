@@ -108,45 +108,17 @@ func runSearch(cfg config, q query.Query, root string, stdout, stderr io.Writer)
 	opts.Prune = cfg.size
 	results, stats := search.Start(ctx, opts)
 
-	// La salida se agrupa en un búfer que se vacía cada vez que no hay más
-	// resultados inmediatamente disponibles: los resultados aparecen en
-	// cuanto se encuentran, pero miles de coincidencias seguidas no se
-	// escriben línea a línea en la consola (que es lenta).
 	out := bufio.NewWriter(stdout)
 	p := newPrinter(out, supportsColor(stdout))
 	p.header(q.Describe(), root, cfg.all)
 
-	next := func() (search.Result, bool) {
-		select {
-		case r, ok := <-results:
-			return r, ok
-		default:
-			out.Flush()
-			r, ok := <-results
-			return r, ok
-		}
-	}
-
-	sum := summary{query: q}
-	var found []search.Result
-	for r, ok := next(); ok; r, ok = next() {
-		sum.found++
-		if cfg.size {
-			// Con --size se muestran al final, ordenadas por tamaño.
-			found = append(found, r)
-		} else {
-			p.match(sum.found, r)
-		}
-
-		if cfg.open && sum.found == 1 {
-			// Se abre en cuanto aparece, sin esperar al final del recorrido.
-			sum.opened = r.Path
-			sum.openErr = openExplorer(r.Path)
-		}
-	}
-
+	sum, found := collect(cfg, p, nextResult(results, out))
+	sum.query = q
 	if cfg.size && len(found) > 0 && ctx.Err() == nil {
-		p.sizes(measure(ctx, found), &sum)
+		list := measure(ctx, found)
+		p.sizes(list)
+		sum.sized = true
+		sum.bytes, sum.files = totals(list)
 	}
 
 	sum.scanned = stats.Scanned()
@@ -159,7 +131,53 @@ func runSearch(cfg config, q query.Query, root string, stdout, stderr io.Writer)
 	if sum.openErr != nil {
 		fmt.Fprintf(stderr, "error: no se pudo abrir el Explorador: %v\n", sum.openErr)
 	}
+	return exitCode(sum)
+}
 
+// nextResult devuelve una función que lee el siguiente resultado. La salida
+// se agrupa en el búfer out, que se vacía cada vez que no hay más resultados
+// inmediatamente disponibles: los resultados aparecen en cuanto se
+// encuentran, pero miles de coincidencias seguidas no se escriben línea a
+// línea en la consola (que es lenta).
+func nextResult(results <-chan search.Result, out *bufio.Writer) func() (search.Result, bool) {
+	return func() (search.Result, bool) {
+		select {
+		case r, ok := <-results:
+			return r, ok
+		default:
+			out.Flush()
+			r, ok := <-results
+			return r, ok
+		}
+	}
+}
+
+// collect lee todos los resultados con next. Los muestra en cuanto llegan
+// (con --size los guarda para mostrarlos al final, ordenados por tamaño) y,
+// con --open, abre el primero. Devuelve el recuento en el resumen y las
+// carpetas guardadas.
+func collect(cfg config, p *printer, next func() (search.Result, bool)) (summary, []search.Result) {
+	var sum summary
+	var found []search.Result
+	for r, ok := next(); ok; r, ok = next() {
+		sum.found++
+		if cfg.size {
+			found = append(found, r)
+		} else {
+			p.match(sum.found, r)
+		}
+
+		if cfg.open && sum.found == 1 {
+			// Se abre en cuanto aparece, sin esperar al final del recorrido.
+			sum.opened = r.Path
+			sum.openErr = openExplorer(r.Path)
+		}
+	}
+	return sum, found
+}
+
+// exitCode devuelve el código de salida que corresponde al resumen.
+func exitCode(sum summary) int {
 	switch {
 	case sum.interrupted:
 		return exitInterrupted
@@ -218,6 +236,15 @@ func measure(ctx context.Context, found []search.Result) []sized {
 		return cmp.Compare(b.Bytes, a.Bytes)
 	})
 	return list
+}
+
+// totals suma el tamaño y el número de archivos de las carpetas de list.
+func totals(list []sized) (size, files int64) {
+	for _, item := range list {
+		size += item.Bytes
+		files += item.Files
+	}
+	return size, files
 }
 
 // parseArgs interpreta los argumentos. Cada opción admite su forma corta y

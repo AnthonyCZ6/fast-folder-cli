@@ -84,17 +84,14 @@ func (p *printer) match(n int64, r search.Result) {
 	)
 }
 
-// sizes imprime las carpetas con su tamaño, ya ordenadas, y suma el total.
-func (p *printer) sizes(list []sized, s *summary) {
-	s.sized = true
+// sizes imprime las carpetas con su tamaño, ya ordenadas.
+func (p *printer) sizes(list []sized) {
 	for _, item := range list {
 		fmt.Fprintf(p.w, "  %s  %s%s\n",
 			p.paint(fmt.Sprintf("%10s", humanize.Bytes(item.Bytes)), ansiBold, ansiCyan),
 			p.path(item.Path),
 			p.project(item.Project),
 		)
-		s.bytes += item.Bytes
-		s.files += item.Files
 	}
 }
 
