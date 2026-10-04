@@ -5,6 +5,7 @@ package search
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -117,17 +118,10 @@ func (w *walker) walk(dir string, root bool) {
 	}
 	w.stats.scanned.Add(1)
 
-	// En el modo proyectos, una carpeta con indicios de proyecto se reporta
-	// y no se recorre: su interior (node_modules, bin, .git...) no interesa.
-	// La raíz se recorre siempre, porque un package.json suelto en la carpeta
-	// personal ocultaría todos los proyectos.
-	if w.opts.Projects && !root {
-		if kind := detectProject(entries); kind != "" {
-			if w.accept(dir, filepath.Base(dir)) {
-				w.emit(Result{Path: dir, Project: kind})
-			}
-			return
-		}
+	// La raíz se recorre siempre, aunque parezca un proyecto: un package.json
+	// suelto en la carpeta personal ocultaría todos los proyectos.
+	if w.opts.Projects && !root && w.reportProject(dir, entries) {
+		return
 	}
 
 	for _, e := range entries {
@@ -153,6 +147,20 @@ func (w *walker) walk(dir string, root bool) {
 			w.pool.do(func() { w.walk(path, false) })
 		}
 	}
+}
+
+// reportProject, en el modo proyectos, emite dir si es un proyecto que pasa
+// los filtros. Devuelve true si dir es un proyecto (se haya emitido o no):
+// su interior (node_modules, bin, .git...) no interesa y no se recorre.
+func (w *walker) reportProject(dir string, entries []fs.DirEntry) bool {
+	kind := detectProject(entries)
+	if kind == "" {
+		return false
+	}
+	if w.accept(dir, filepath.Base(dir)) {
+		w.emit(Result{Path: dir, Project: kind})
+	}
+	return true
 }
 
 // accept aplica el término de búsqueda y el filtro de fecha a una carpeta.
