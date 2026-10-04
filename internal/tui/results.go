@@ -102,8 +102,14 @@ func (m *model) moveCursor(delta int) {
 	}
 }
 
+// Filas que ocupan la cabecera y el pie de la pantalla de resultados.
+const (
+	headerLines = 2
+	footerLines = 5
+)
+
 // listHeight es el número de filas disponibles para la lista de resultados:
-// el alto total menos la cabecera (2 líneas) y el pie (5 líneas).
+// el alto total menos la cabecera y el pie.
 func (m model) listHeight() int {
-	return max(m.height-7, 1)
+	return max(m.height-headerLines-footerLines, 1)
 }

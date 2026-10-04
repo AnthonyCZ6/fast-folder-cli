@@ -93,8 +93,16 @@ func (m *model) cancelDetails() {
 	}
 }
 
-// waitForResults espera la siguiente carpeta encontrada y agrupa las que
-// lleguen en los 30 ms siguientes, para no redibujar la pantalla por cada una.
+// Los resultados llegan a la pantalla en lotes: el primero que se encuentra y
+// los que lleguen durante batchWindow, hasta un máximo de batchMax.
+const (
+	batchWindow = 30 * time.Millisecond
+	batchMax    = 500
+)
+
+// waitForResults espera la siguiente carpeta encontrada y la entrega junto con
+// las que lleguen poco después (ver batchWindow), para no redibujar la
+// pantalla por cada una.
 func waitForResults(gen int, ch <-chan search.Result) tea.Cmd {
 	return func() tea.Msg {
 		r, ok := <-ch
@@ -102,8 +110,8 @@ func waitForResults(gen int, ch <-chan search.Result) tea.Cmd {
 			return resultsMsg{gen: gen, done: true}
 		}
 		batch := []search.Result{r}
-		timeout := time.After(30 * time.Millisecond)
-		for len(batch) < 500 {
+		timeout := time.After(batchWindow)
+		for len(batch) < batchMax {
 			select {
 			case r, ok := <-ch:
 				if !ok {

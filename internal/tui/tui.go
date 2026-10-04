@@ -107,11 +107,14 @@ type model struct {
 	detailsCancel context.CancelFunc
 }
 
+// maxTermLength es la longitud máxima del término en el formulario.
+const maxTermLength = 200
+
 func newModel(version string, locations []location, acts actions) model {
 	in := textinput.New()
 	in.Prompt = ""
 	in.Placeholder = "nombre o parte del nombre (ej. proyecto, tesis*)"
-	in.CharLimit = 200
+	in.CharLimit = maxTermLength
 	in.Focus()
 
 	return model{

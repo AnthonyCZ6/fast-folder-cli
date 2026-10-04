@@ -67,11 +67,16 @@ func DefaultWorkers() int {
 	return max(runtime.NumCPU()*4, 8)
 }
 
+// resultsBuffer es la capacidad del canal de resultados: el recorrido puede
+// seguir mientras quien los lee está ocupado (por ejemplo, escribiendo en la
+// consola).
+const resultsBuffer = 64
+
 // Start inicia la búsqueda en segundo plano y devuelve un canal por el que se
 // emite cada carpeta encontrada. El canal se cierra al terminar el recorrido o
 // al cancelarse ctx.
 func Start(ctx context.Context, opts Options) (<-chan Result, *Stats) {
-	out := make(chan Result, 64)
+	out := make(chan Result, resultsBuffer)
 	w := &walker{
 		ctx:   ctx,
 		opts:  opts,
