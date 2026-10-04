@@ -1,7 +1,9 @@
-# Compara el rendimiento de la rama con otra versión del código (por defecto,
-# main) con los benchmarks de search y cli, en el mismo runner de Windows.
+# Compara el rendimiento de la rama con otra versión del código con los
+# benchmarks de search y cli, en el mismo runner de Windows.
 #
-# Se ejecuta al subir una rama perf/** y, a mano, desde la pestaña Actions o con:
+# Se ejecuta al subir una rama perf/**, comparando con lo que había en la rama
+# antes del push (o con main, la primera vez), y a mano desde la pestaña
+# Actions o con:
 #
 #   gh workflow run bench.yml --ref <rama> -f base=main
 #
@@ -34,7 +36,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BASE: ${{ inputs.base || 'main' }}
+  # A mano: la versión indicada. En un push: el commit anterior de la rama, o
+  # main si la rama es nueva (entonces "before" son todo ceros).
+  BASE: ${{ inputs.base || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || 'main' }}
   COUNT: ${{ inputs.count || '10' }}
 
 jobs:
