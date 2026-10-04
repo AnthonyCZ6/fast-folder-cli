@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -200,3 +201,61 @@ func TestRunModified(t *testing.T) {
 		t.Errorf("cabecera inesperada:\n%s", out)
 	}
 }
+
+// stubExplorer sustituye el Explorador durante la prueba: cada llamada
+// devuelve err y queda registrada en la lista que se devuelve.
+func stubExplorer(t *testing.T, err error) *[]string {
+	t.Helper()
+	var opened []string
+	prev := openExplorer
+	openExplorer = func(path string) error {
+		opened = append(opened, path)
+		return err
+	}
+	t.Cleanup(func() { openExplorer = prev })
+	return &opened
+}
+
+func TestRunOpenOpensOnlyTheFirstMatch(t *testing.T) {
+	root := makeTree(t, []string{"a/informe", "b/informe"}, nil)
+	opened := stubExplorer(t, nil)
+
+	out := runOK(t, "informe", "-o", "-p", root)
+	if len(*opened) != 1 {
+		t.Fatalf("se abrieron %d carpetas, want 1: %q", len(*opened), *opened)
+	}
+	first := (*opened)[0]
+	if first != filepath.Join(root, "a", "informe") && first != filepath.Join(root, "b", "informe") {
+		t.Errorf("se abrió %q, que no es una coincidencia", first)
+	}
+	if !strings.Contains(out, "Explorador : "+first+"\n") {
+		t.Errorf("el resumen no indica la carpeta abierta:\n%s", out)
+	}
+}
+
+func TestRunOpenReportsErrors(t *testing.T) {
+	root := makeTree(t, []string{"informe"}, nil)
+	stubExplorer(t, errors.New("sin Explorador"))
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"informe", "-o", "-p", root}, &stdout, &stderr, "test"); code != exitFound {
+		t.Fatalf("Run = %d, want %d; stderr: %s", code, exitFound, stderr.String())
+	}
+	if want := "error: no se pudo abrir el Explorador: sin Explorador\n"; stderr.String() != want {
+		t.Errorf("stderr = %q, want %q", stderr.String(), want)
+	}
+	if strings.Contains(stdout.String(), "Explorador :") {
+		t.Errorf("el resumen no debe indicar una carpeta abierta si falló:\n%s", stdout.String())
+	}
+}
+
+func TestRunWithoutOpenDoesNotOpen(t *testing.T) {
+	root := makeTree(t, []string{"informe"}, nil)
+	opened := stubExplorer(t, nil)
+
+	runOK(t, "informe", "-p", root)
+	if len(*opened) != 0 {
+		t.Errorf("sin -o no debe abrirse nada; se abrió %q", *opened)
+	}
+}
+

@@ -35,6 +35,10 @@ const (
 
 const defaultRoot = "%USERPROFILE%"
 
+// openExplorer abre una carpeta en el Explorador (--open). Las pruebas lo
+// reemplazan para no abrir ventanas.
+var openExplorer = launch.Explorer
+
 // config contiene las opciones ya interpretadas de la línea de comandos.
 type config struct {
 	term     string
@@ -137,7 +141,7 @@ func runSearch(cfg config, q query.Query, root string, stdout, stderr io.Writer)
 		if cfg.open && sum.found == 1 {
 			// Se abre en cuanto aparece, sin esperar al final del recorrido.
 			sum.opened = r.Path
-			sum.openErr = launch.Explorer(r.Path)
+			sum.openErr = openExplorer(r.Path)
 		}
 	}
 
