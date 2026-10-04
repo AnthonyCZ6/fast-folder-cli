@@ -1,0 +1,100 @@
+# Compara el rendimiento de la rama con otra versión del código (por defecto,
+# main) con los benchmarks de search y cli, en el mismo runner de Windows.
+#
+# Se ejecuta al subir una rama perf/** y, a mano, desde la pestaña Actions o con:
+#
+#   gh workflow run bench.yml --ref <rama> -f base=main
+#
+# Las pruebas de rendimiento (bench_test.go e internal/benchtree) se toman de
+# la rama también para la versión base, así que las dos miden lo mismo. Las
+# ejecuciones de las dos versiones se alternan para repartir el ruido del
+# runner, y benchstat dice qué diferencias son significativas.
+name: Benchmarks
+
+on:
+  push:
+    branches:
+      - "perf/**"
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Rama, etiqueta o commit con el que comparar
+        default: main
+        required: true
+      count:
+        description: Ejecuciones de cada versión
+        default: "10"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BASE: ${{ inputs.base || 'main' }}
+  COUNT: ${{ inputs.count || '10' }}
+
+jobs:
+  bench:
+    name: Comparar con la versión base
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: head
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.BASE }}
+          path: base
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache-dependency-path: head/go.sum
+
+      - name: Compilar los benchmarks de las dos versiones
+        shell: bash
+        run: |
+          cp -r head/internal/benchtree base/internal/
+          for pkg in search cli; do
+            cp "head/internal/$pkg/bench_test.go" "base/internal/$pkg/"
+            for v in base head; do
+              (cd "$v" && go test -c -o "../$v-$pkg.test.exe" "./internal/$pkg")
+            done
+          done
+
+      - name: Ejecutar alternando las dos versiones
+        shell: bash
+        env:
+          FFC_BENCH_TREE: ${{ runner.temp }}/benchtree
+        run: |
+          for i in $(seq "$COUNT"); do
+            for v in base head; do
+              for pkg in search cli; do
+                "./$v-$pkg.test.exe" -test.run '^$' -test.bench . -test.benchmem -test.count 1 >> "$v.txt"
+              done
+            done
+          done
+
+      - name: Comparar (benchstat)
+        shell: bash
+        run: |
+          go run golang.org/x/perf/cmd/benchstat@v0.0.0-20260929162123-406019bb8b68 base.txt head.txt | tee benchstat.txt
+          {
+            echo "### Rendimiento: ${GITHUB_REF_NAME} frente a ${BASE}"
+            echo '```text'
+            cat benchstat.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: benchmarks
+          path: |
+            base.txt
+            head.txt
+            benchstat.txt
