@@ -1,0 +1,35 @@
+# Configuración de fast-folder-cli
+#
+# Quita el # del principio de una línea para activarla. Si este archivo tiene
+# un error, fast-folder-cli lo avisa y sigue con los valores de siempre.
+# Las rutas aceptan %USERPROFILE%, %APPDATA%, ~, D:... Entre comillas simples
+# ('D:\dev') no hace falta duplicar las barras invertidas.
+
+# Carpeta donde se busca si no se indica -p.
+# ubicacion = '%USERPROFILE%\Documents'
+
+# Carpetas que nunca se muestran ni se recorren, por nombre (sin distinguir
+# mayúsculas ni acentos). Acelera las búsquedas entre proyectos.
+# excluir = ["node_modules", "venv", ".venv", "$Recycle.Bin"]
+
+# Incluir siempre las carpetas ocultas y de sistema, como -a.
+# ocultas = true
+
+# Editor de la tecla v del modo interactivo: "code" (VS Code, el de siempre),
+# "cursor", "codium", "notepad++" o la ruta completa de un .exe.
+# editor = "cursor"
+
+# Terminal de la tecla t: "wt" (Windows Terminal), "pwsh", "powershell" o "cmd".
+# terminal = "wt"
+
+# Cuántas carpetas elegidas hace poco se ofrecen en el formulario (0: ninguna).
+# recientes = 5
+
+# Ubicaciones propias: aparecen las primeras en el formulario.
+# [[ubicaciones]]
+# nombre = "Proyectos"
+# ruta = 'D:\dev'
+#
+# [[ubicaciones]]
+# nombre = "Tesis"
+# ruta = '%USERPROFILE%\OneDrive\Tesis'

@@ -329,3 +329,21 @@ func TestSizerStopsWhenCancelled(t *testing.T) {
 		t.Errorf("con el contexto cancelado, Wait = %+v, want una medida vacía", got)
 	}
 }
+
+// Las carpetas excluidas no se emiten ni se recorren, sin distinguir
+// mayúsculas ni acentos; tampoco en el modo proyectos.
+func TestExclude(t *testing.T) {
+	root := makeTree(t, "a/node_modules/lib", "b/Node_Modules", "c/src", "Música/caché/x", "venv/proyecto")
+	writeFiles(t, root, "venv/proyecto/go.mod", "c/go.mod")
+
+	got := collect(t, root, Options{Exclude: []string{"node_modules", " CACHE ", "venv"}})
+	want := []string{"Música", "a", "b", "c", "c/src"}
+	if !slices.Equal(got, want) {
+		t.Errorf("con exclusiones = %v, want %v", got, want)
+	}
+
+	got = collect(t, root, Options{Projects: true, Exclude: []string{"venv"}})
+	if want := []string{"c (Go)"}; !slices.Equal(got, want) {
+		t.Errorf("proyectos con exclusiones = %v, want %v", got, want)
+	}
+}

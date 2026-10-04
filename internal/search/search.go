@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -34,6 +35,9 @@ type Options struct {
 	// Prune evita recorrer el interior de las carpetas encontradas; por
 	// ejemplo, para no contar dos veces los node_modules anidados.
 	Prune bool
+	// Exclude son nombres de carpeta que ni se emiten ni se recorren (sin
+	// distinguir mayúsculas ni acentos), como node_modules.
+	Exclude []string
 	// Workers es el máximo de goroutines de recorrido simultáneas.
 	// Si es <= 0 se usa DefaultWorkers().
 	Workers int
@@ -79,11 +83,12 @@ const resultsBuffer = 64
 func Start(ctx context.Context, opts Options) (<-chan Result, *Stats) {
 	out := make(chan Result, resultsBuffer)
 	w := &walker{
-		ctx:   ctx,
-		opts:  opts,
-		pool:  newPool(opts.Workers),
-		out:   out,
-		stats: &Stats{},
+		ctx:     ctx,
+		opts:    opts,
+		pool:    newPool(opts.Workers),
+		out:     out,
+		stats:   &Stats{},
+		exclude: foldSet(opts.Exclude),
 	}
 
 	go func() {
@@ -96,11 +101,30 @@ func Start(ctx context.Context, opts Options) (<-chan Result, *Stats) {
 }
 
 type walker struct {
-	ctx   context.Context
-	opts  Options
-	pool  *pool
-	out   chan<- Result
-	stats *Stats
+	ctx     context.Context
+	opts    Options
+	pool    *pool
+	out     chan<- Result
+	stats   *Stats
+	exclude map[string]bool // opts.Exclude normalizado con fold
+}
+
+// foldSet normaliza los nombres con fold para compararlos con los de las
+// carpetas. Devuelve nil si no hay nombres.
+func foldSet(names []string) map[string]bool {
+	if len(names) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(names))
+	for _, n := range names {
+		set[fold(strings.TrimSpace(n))] = true
+	}
+	return set
+}
+
+// excluded indica si la carpeta name está en Exclude.
+func (w *walker) excluded(name string) bool {
+	return len(w.exclude) > 0 && w.exclude[fold(name)]
 }
 
 // walk lee dir, emite las subcarpetas que coinciden y desciende en ellas.
@@ -126,7 +150,7 @@ func (w *walker) walk(dir string, root bool) {
 
 	for _, e := range entries {
 		kind := inspect(dir, e)
-		if !kind.dir || (kind.hidden && !w.opts.IncludeHidden) {
+		if !kind.dir || (kind.hidden && !w.opts.IncludeHidden) || w.excluded(e.Name()) {
 			continue
 		}
 
