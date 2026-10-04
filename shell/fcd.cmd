@@ -12,6 +12,7 @@ rem despues de cambiar la pagina de codigos.
 setlocal
 set "FCD_FILE=%TEMP%\fcd-%RANDOM%%RANDOM%.txt"
 "%~dp0fast-folder-cli.exe" --cd-file "%FCD_FILE%" %*
+set "FCD_EXIT=%ERRORLEVEL%"
 if not exist "%FCD_FILE%" goto end
 
 for /f "tokens=2 delims=:." %%c in ('chcp') do set "FCD_CP=%%c"
@@ -25,6 +26,7 @@ if not defined FCD_DIR goto end
 endlocal & cd /d "%FCD_DIR%"
 exit /b 0
 
+rem Sin carpeta elegida, termina con el codigo de fast-folder-cli (por
+rem ejemplo, 2 si las opciones no son validas).
 :end
-endlocal
-exit /b 0
+endlocal & exit /b %FCD_EXIT%
