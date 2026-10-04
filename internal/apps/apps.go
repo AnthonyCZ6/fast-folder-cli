@@ -38,23 +38,51 @@ type entry struct {
 // finish), ordenada por nombre y sin repetidas. Descarta las entradas
 // ocultas, las que no tienen nombre y las que no tienen una carpeta que
 // exista.
-func build(entries []entry, appPaths []string, match func(string) bool) []App {
+func build(entries []entry, appPaths []string, links []shortcut, match func(string) bool) []App {
 	exes := existingExes(appPaths)
+	linked := existingLinks(links)
+	candidates := exes
+	for _, l := range linked {
+		candidates = append(candidates, l.target)
+	}
+	candidates = existingExes(candidates) // sin repetir
+
 	var list []App
 	used := map[string]bool{} // ejecutables que ya son de una aplicación
-	for _, e := range entries {
-		a, ok := fromEntry(e)
-		if !ok {
-			continue
-		}
-		a = withAppPath(a, exes)
+	add := func(a App) {
 		if a.Exe != "" {
 			used[pathKey(a.Exe)] = true
 		}
 		list = append(list, a)
 	}
+	for _, e := range entries {
+		if a, ok := fromEntry(e); ok {
+			add(withAppPath(a, candidates))
+		}
+	}
+	for _, l := range linked {
+		if !used[pathKey(l.target)] {
+			add(App{Name: l.name, Dir: filepath.Dir(l.target), Exe: l.target})
+		}
+	}
 	list = append(list, fromAppPaths(exes, used)...)
 	return finish(list, match)
+}
+
+// existingLinks deja los accesos directos que apuntan a un .exe que existe y
+// no es un desinstalador, sin repetir el destino.
+func existingLinks(links []shortcut) []shortcut {
+	seen := map[string]bool{}
+	var out []shortcut
+	for _, l := range links {
+		exe := cleanPath(l.target)
+		if seen[pathKey(exe)] || !isExe(exe) || isUninstaller(exe) || !isFile(exe) {
+			continue
+		}
+		seen[pathKey(exe)] = true
+		out = append(out, shortcut{name: l.name, target: exe})
+	}
+	return out
 }
 
 // existingExes limpia las rutas de App Paths y deja, sin repetir, las de los

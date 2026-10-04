@@ -5,6 +5,7 @@ package apps
 import (
 	"fmt"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -38,7 +39,22 @@ func Find(match func(string) bool) ([]App, error) {
 	if err != nil {
 		return nil, err
 	}
-	return build(entries, readAppPaths(appPathKeys), match), nil
+	return build(entries, readAppPaths(appPathKeys), readStartMenu(), match), nil
+}
+
+// startMenuFolders son las carpetas de accesos directos del menú Inicio:
+// para todos los usuarios y para el actual.
+var startMenuFolders = []*windows.KNOWNFOLDERID{windows.FOLDERID_CommonPrograms, windows.FOLDERID_Programs}
+
+// readStartMenu lee los accesos directos (.lnk) del menú Inicio.
+func readStartMenu() []shortcut {
+	var links []shortcut
+	for _, id := range startMenuFolders {
+		if dir, err := windows.KnownFolderPath(id, 0); err == nil {
+			links = append(links, readShortcuts(dir)...)
+		}
+	}
+	return links
 }
 
 // readUninstall lee las entradas de desinstalación que hay bajo keys. Una

@@ -112,7 +112,7 @@ func TestReadRegistry(t *testing.T) {
 		{Name: "Mi App", Dir: filepath.Join(base, "App"), Exe: exe, Version: "1.0"},
 		{Name: "tool", Dir: filepath.Join(base, "Herramienta"), Exe: filepath.Join(base, "Herramienta", "tool.exe")},
 	}
-	if got := build(entries, paths, nil); !slices.Equal(got, want) {
+	if got := build(entries, paths, nil, nil); !slices.Equal(got, want) {
 		t.Errorf("build =\n%+v\nwant\n%+v", got, want)
 	}
 }

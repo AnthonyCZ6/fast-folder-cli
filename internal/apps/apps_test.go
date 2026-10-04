@@ -167,7 +167,7 @@ func TestBuild(t *testing.T) {
 		{Name: "Microsoft 365", Dir: at("Office")},
 		{Name: "WINWORD", Dir: at("Office/root"), Exe: at("Office/root/WINWORD.EXE")},
 	}
-	if got := build(entries, appPaths, nil); !slices.Equal(got, want) {
+	if got := build(entries, appPaths, nil, nil); !slices.Equal(got, want) {
 		t.Errorf("build =\n%+v\nwant\n%+v", got, want)
 	}
 
@@ -185,7 +185,7 @@ func TestBuild(t *testing.T) {
 	}
 	for _, tt := range tests {
 		var names []string
-		for _, a := range build(entries, appPaths, containing(tt.term)) {
+		for _, a := range build(entries, appPaths, nil, containing(tt.term)) {
 			names = append(names, a.Name)
 		}
 		if !slices.Equal(names, tt.want) {
@@ -204,7 +204,7 @@ func TestBuildIgnoresIconOutsideInstallLocation(t *testing.T) {
 		displayIcon:     filepath.Join(base, "Comun", "lanzador.exe"),
 	}}
 	want := []App{{Name: "App", Dir: filepath.Join(base, "App")}}
-	if got := build(entries, nil, nil); !slices.Equal(got, want) {
+	if got := build(entries, nil, nil, nil); !slices.Equal(got, want) {
 		t.Errorf("build = %+v, want %+v", got, want)
 	}
 }
