@@ -32,7 +32,11 @@ func defaultLocations(custom []config.Location, recent []string) []location {
 		all = append(all, location{Label: "Carpeta actual", Path: wd})
 	}
 	for _, dir := range recent {
-		all = append(all, location{Label: "Reciente: " + filepath.Base(dir), Path: dir})
+		name := filepath.Base(dir)
+		if strings.Trim(name, `\/`) == "" {
+			name = dir // la raíz de una unidad
+		}
+		all = append(all, location{Label: "Reciente: " + name, Path: dir})
 	}
 	all = append(all, secondary...)
 

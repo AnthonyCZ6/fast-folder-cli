@@ -75,6 +75,7 @@ type config struct {
 	exclude  []string // carpetas excluidas: las de --exclude y las del archivo
 	editConf bool     // --config: crear y abrir el archivo de configuración
 	json     bool     // --json: una línea JSON por resultado
+	rootSet  bool     // se indicó -p, aunque sea con el valor por defecto
 
 	// Preferencias del archivo de configuración (no vienen de las banderas).
 	prefs prefs.Config
@@ -100,7 +101,7 @@ func (cfg config) withPrefs(p prefs.Config) config {
 	if cfg.apps {
 		return cfg
 	}
-	if cfg.root == defaultRoot && p.Root != "" {
+	if !cfg.rootSet && p.Root != "" {
 		cfg.root = p.Root
 	}
 	cfg.all = cfg.all || p.Hidden
@@ -114,6 +115,12 @@ func readPrefs(stderr io.Writer) prefs.Config {
 	p, err := loadPrefs()
 	if err != nil {
 		fmt.Fprintf(stderr, "aviso: se ignora la configuración: %v\n", err)
+	}
+	if p.Root != "" {
+		if _, err := pathutil.Resolve(p.Root); err != nil {
+			fmt.Fprintf(stderr, "aviso: se ignora la ubicación de la configuración: %v\n", err)
+			p.Root = ""
+		}
 	}
 	return p
 }
@@ -146,7 +153,7 @@ func (cfg config) checkApps() error {
 		return errors.New("--all no se aplica a las apps")
 	case len(cfg.exclude) > 0:
 		return errors.New("--exclude no se aplica a las apps")
-	case cfg.root != defaultRoot:
+	case cfg.rootSet:
 		return errors.New("--path no se aplica a las apps: se buscan entre los programas instalados")
 	}
 	return nil
@@ -504,6 +511,11 @@ func parseArgs(args []string) (config, error) {
 		}
 		cfg.term = strings.Join(positional, " ")
 	}
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "p" || f.Name == "path" {
+			cfg.rootSet = true
+		}
+	})
 	for _, name := range strings.Split(exclude, ",") {
 		if name = strings.TrimSpace(name); name != "" {
 			cfg.exclude = append(cfg.exclude, name)

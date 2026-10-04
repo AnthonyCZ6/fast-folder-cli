@@ -64,7 +64,12 @@ func AddRecent(dir string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	// Se escribe aparte y se renombra: nunca queda un archivo a medias.
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // readRecent lee la lista guardada; nil si no existe o está dañada.

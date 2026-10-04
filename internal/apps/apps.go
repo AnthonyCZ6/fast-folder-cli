@@ -57,7 +57,12 @@ func build(entries []entry, appPaths []string, links []shortcut, match func(stri
 	}
 	for _, e := range entries {
 		if a, ok := fromEntry(e); ok {
-			add(withAppPath(a, candidates))
+			// Primero App Paths, que nombra el programa principal; los
+			// accesos directos pueden apuntar a otros (un actualizador).
+			if a = withAppPath(a, exes); a.Exe == "" {
+				a = withAppPath(a, candidates)
+			}
+			add(a)
 		}
 	}
 	for _, l := range linked {

@@ -44,8 +44,11 @@ func readShortcuts(dir string) []shortcut {
 		if err != nil || d.IsDir() || !strings.EqualFold(filepath.Ext(path), ".lnk") {
 			return nil
 		}
+		if info, err := d.Info(); err != nil || info.Size() > maxLnkSize {
+			return nil
+		}
 		data, err := os.ReadFile(path)
-		if err != nil || len(data) > maxLnkSize {
+		if err != nil {
 			return nil
 		}
 		if target := lnkTarget(data); target != "" {

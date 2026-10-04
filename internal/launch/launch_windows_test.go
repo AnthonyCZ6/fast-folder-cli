@@ -142,6 +142,12 @@ func TestEditorCmd(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("FFC_EDITOR_DIR", `C:\Editores`)
+	// Una ruta relativa se resuelve contra la carpeta actual, nunca contra la
+	// carpeta encontrada (que podría contener un ejecutable ajeno).
+	relative, err := filepath.Abs(`tools\ed.exe`)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	tests := []struct {
 		command, target string
@@ -151,6 +157,7 @@ func TestEditorCmd(t *testing.T) {
 		{"cursor", dir, []string{"cursor", "."}, dir},
 		{"notepad++", file, []string{"notepad++", "config.toml"}, dir},
 		{`%FFC_EDITOR_DIR%\ed.exe`, dir, []string{`C:\Editores\ed.exe`, "."}, dir},
+		{`tools\ed.exe`, dir, []string{relative, "."}, dir},
 	}
 	for _, tt := range tests {
 		cmd, err := editorCmd(tt.command, tt.target)

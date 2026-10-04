@@ -164,7 +164,17 @@ func editorCmd(command, target string) (*exec.Cmd, error) {
 	if info, err := os.Stat(target); err == nil && !info.IsDir() {
 		dir, arg = filepath.Dir(target), filepath.Base(target)
 	}
-	cmd := exec.Command(pathutil.ExpandEnv(command), arg)
+	program := pathutil.ExpandEnv(command)
+	if !filepath.IsAbs(program) && strings.ContainsAny(program, `\/`) {
+		// Una ruta relativa se resolvería contra cmd.Dir, la carpeta
+		// encontrada: se resuelve contra la carpeta actual.
+		abs, err := filepath.Abs(program)
+		if err != nil {
+			return nil, err
+		}
+		program = abs
+	}
+	cmd := exec.Command(program, arg)
 	cmd.Dir = dir
 	return cmd, nil
 }

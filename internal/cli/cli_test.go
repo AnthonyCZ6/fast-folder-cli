@@ -61,6 +61,29 @@ func TestRunAppliesPrefs(t *testing.T) {
 	}
 }
 
+// Un -p explícito manda sobre la ubicación del archivo aunque coincida con el
+// valor por defecto, y una ubicación del archivo que no existe se avisa y se
+// ignora en lugar de dar un error de uso.
+func TestPrefsRootPrecedence(t *testing.T) {
+	cfg, err := parseArgs([]string{"x", "-p", defaultRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.withPrefs(prefs.Config{Root: `D:\otra`}).root; got != defaultRoot {
+		t.Errorf("con -p %s explícito, root = %q", defaultRoot, got)
+	}
+
+	stubPrefs(t, prefs.Config{Root: filepath.Join(t.TempDir(), "no-existe")}, nil)
+	root := makeTree(t, []string{"informe"}, nil)
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"informe", "-p", root}, &stdout, &stderr, "test"); code != exitFound {
+		t.Fatalf("código = %d; stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "aviso: se ignora la ubicación de la configuración") {
+		t.Errorf("stderr = %q", stderr.String())
+	}
+}
+
 // Un archivo de configuración con errores se avisa y se ignora.
 func TestRunWarnsAboutBadPrefs(t *testing.T) {
 	stubPrefs(t, prefs.Config{}, errors.New(`config.toml: clave desconocida "x"`))
@@ -144,8 +167,8 @@ func TestParseArgs(t *testing.T) {
 		want config
 	}{
 		{[]string{"-n", "proyecto"}, config{term: "proyecto", root: defaultRoot}},
-		{[]string{"--name=proyecto", "--path", "D:\\", "--all", "--open"}, config{term: "proyecto", root: "D:\\", all: true, open: true}},
-		{[]string{"-a", "-o", "-p", "%APPDATA%", "-n", "x"}, config{term: "x", root: "%APPDATA%", all: true, open: true}},
+		{[]string{"--name=proyecto", "--path", "D:\\", "--all", "--open"}, config{term: "proyecto", root: "D:\\", all: true, open: true, rootSet: true}},
+		{[]string{"-a", "-o", "-p", "%APPDATA%", "-n", "x"}, config{term: "x", root: "%APPDATA%", all: true, open: true, rootSet: true}},
 		// Término posicional con opciones antes y después.
 		{[]string{"-a", "mis", "proyectos", "-o"}, config{term: "mis proyectos", root: defaultRoot, all: true, open: true}},
 		// Tras "--" todo es parte del término.

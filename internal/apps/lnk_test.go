@@ -100,6 +100,8 @@ func TestLnkTarget(t *testing.T) {
 		{"anunciado (sin destino)", lnkFile("", "", false, ""), ""},
 		{"recortado", full[:lnkHeaderSize+10], ""},
 		{"no es un .lnk", []byte("hola"), ""},
+		{"solo la cabecera, con LinkInfo", lnkFile(`C:\a\`, "b.exe", false, "")[:lnkHeaderSize], ""},
+		{"bloque de tamaño 7", binary.LittleEndian.AppendUint32(lnkFile("", "", false, "")[:lnkHeaderSize], 7), ""},
 	}
 	for _, tt := range tests {
 		if got := lnkTarget(tt.data); got != tt.want {
@@ -165,6 +167,22 @@ func TestBuildWithShortcuts(t *testing.T) {
 		{Name: "Mi Portable", Dir: at("Portable"), Exe: at("Portable/portable.exe")},
 	}
 	if got := build(entries, nil, links, nil); !slices.Equal(got, want) {
+		t.Errorf("build =\n%+v\nwant\n%+v", got, want)
+	}
+}
+
+// Si App Paths nombra el ejecutable de una app, se adopta aunque un acceso
+// directo apunte a otro de la misma carpeta (un actualizador, por ejemplo).
+func TestBuildPrefersAppPaths(t *testing.T) {
+	base := makeFiles(t, "7-Zip/7zFM.exe", "7-Zip/7zG.exe")
+	at := func(rel string) string { return filepath.Join(base, filepath.FromSlash(rel)) }
+	entries := []entry{{name: "7-Zip", installLocation: at("7-Zip")}}
+	links := []shortcut{{"7-Zip GUI", at("7-Zip/7zG.exe")}}
+	want := []App{
+		{Name: "7-Zip", Dir: at("7-Zip"), Exe: at("7-Zip/7zFM.exe")},
+		{Name: "7-Zip GUI", Dir: at("7-Zip"), Exe: at("7-Zip/7zG.exe")},
+	}
+	if got := build(entries, []string{at("7-Zip/7zFM.exe")}, links, nil); !slices.Equal(got, want) {
 		t.Errorf("build =\n%+v\nwant\n%+v", got, want)
 	}
 }
