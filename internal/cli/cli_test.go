@@ -202,8 +202,31 @@ func TestRunModified(t *testing.T) {
 	}
 }
 
+// Un término o un periodo formados solo por espacios no cuentan como vacíos:
+// son un error de uso, con el mensaje del término o del periodo.
+func TestRunRejectsBlankTermAndPeriod(t *testing.T) {
+	root := t.TempDir()
+	tests := []struct {
+		args    []string
+		wantErr string
+	}{
+		{[]string{"   ", "-p", root}, "error: el término de búsqueda está vacío\n"},
+		{[]string{"x", "-m", " ", "-p", root}, "error: periodo no válido "},
+	}
+	for _, tt := range tests {
+		var stdout, stderr bytes.Buffer
+		if code := Run(tt.args, &stdout, &stderr, "test"); code != exitUsage {
+			t.Errorf("Run(%q) = %d, want %d", tt.args, code, exitUsage)
+		}
+		if !strings.HasPrefix(stderr.String(), tt.wantErr) {
+			t.Errorf("Run(%q) stderr = %q, want que empiece por %q", tt.args, stderr.String(), tt.wantErr)
+		}
+	}
+}
+
 // stubExplorer sustituye el Explorador durante la prueba: cada llamada
-// devuelve err y queda registrada en la lista que se devuelve.
+// devuelve err y queda registrada en la lista que se devuelve. Cambia una
+// variable del paquete, así que estas pruebas no pueden usar t.Parallel.
 func stubExplorer(t *testing.T, err error) *[]string {
 	t.Helper()
 	var opened []string

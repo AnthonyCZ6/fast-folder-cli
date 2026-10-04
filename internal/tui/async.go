@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -34,7 +35,9 @@ type detailsMsg struct {
 }
 
 func (m model) startSearch() (tea.Model, tea.Cmd) {
-	q, err := query.New(m.input.Value(), m.projects, m.dates[m.dateIndex].value, time.Now())
+	// Un término con solo espacios cuenta como vacío: se pide escribir algo.
+	term := strings.TrimSpace(m.input.Value())
+	q, err := query.New(term, m.projects, m.dates[m.dateIndex].value, time.Now())
 	switch {
 	case errors.Is(err, query.ErrEmpty):
 		m.formErr = "Escribe el nombre (o parte del nombre) de la carpeta que buscas, o elige Proyectos o una fecha."

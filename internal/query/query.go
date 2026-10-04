@@ -20,7 +20,7 @@ var ErrEmpty = errors.New("no hay nada que buscar")
 
 // Query es una búsqueda ya validada.
 type Query struct {
-	Term     string       // término sin espacios sobrantes; vacío: cualquier nombre
+	Term     string       // término tal como se recibió; vacío: cualquier nombre
 	Projects bool         // buscar proyectos en lugar de carpetas
 	Period   period.Range // intervalo de modificación; cero: cualquier fecha
 
@@ -31,18 +31,21 @@ type Query struct {
 // ("hoy", "semana", "7d"...) o "" para cualquier fecha, y now la referencia de
 // los periodos relativos.
 //
+// No recorta espacios: un término o un periodo formado solo por espacios no
+// cuenta como vacío, sino que es un error (el modo interactivo recorta el
+// término antes de llamar a New).
+//
 // Devuelve ErrEmpty si no hay nada que buscar, un error que cumple
 // errors.Is(err, period.ErrInvalid) si el periodo no es válido y, si no, el
 // error del término (por ejemplo, un patrón mal formado).
 func New(term string, projects bool, modified string, now time.Time) (Query, error) {
-	q := Query{Term: strings.TrimSpace(term), Projects: projects}
-	modified = strings.TrimSpace(modified)
-	if q.Term == "" && !projects && modified == "" {
+	if term == "" && !projects && modified == "" {
 		return Query{}, ErrEmpty
 	}
 
-	if q.Term != "" {
-		m, err := search.NewMatcher(q.Term)
+	q := Query{Term: term, Projects: projects}
+	if term != "" {
+		m, err := search.NewMatcher(term)
 		if err != nil {
 			return Query{}, err
 		}

@@ -27,9 +27,10 @@ func TestNewErrors(t *testing.T) {
 		want     error
 	}{
 		{"", false, "", ErrEmpty},
-		{"   ", false, " ", ErrEmpty},
 		{"informe", false, "mañana", period.ErrInvalid},
 		{"", true, "0d", period.ErrInvalid},
+		// Un periodo con solo espacios no es "cualquier fecha": es inválido.
+		{"informe", false, " ", period.ErrInvalid},
 	}
 	for _, tt := range tests {
 		if _, err := New(tt.term, tt.projects, tt.modified, now); !errors.Is(err, tt.want) {
@@ -37,9 +38,13 @@ func TestNewErrors(t *testing.T) {
 		}
 	}
 
-	_, err := New("[roto", false, "", now)
-	if err == nil || errors.Is(err, ErrEmpty) || errors.Is(err, period.ErrInvalid) {
-		t.Errorf("New con un patrón inválido: error = %v, want el error del término", err)
+	// Errores del término: un patrón mal formado y un término con solo
+	// espacios, que no cuenta como vacío.
+	for _, term := range []string{"[roto", "   "} {
+		_, err := New(term, false, "", now)
+		if err == nil || errors.Is(err, ErrEmpty) || errors.Is(err, period.ErrInvalid) {
+			t.Errorf("New(%q): error = %v, want el error del término", term, err)
+		}
 	}
 }
 
@@ -51,7 +56,6 @@ func TestDescribe(t *testing.T) {
 		want     string
 	}{
 		{"tesis", false, "", `"tesis"`},
-		{"  tesis ", false, "", `"tesis"`},
 		{"", true, "", "proyectos"},
 		{"api", true, "", `proyectos "api"`},
 		{"", false, "hoy", "carpetas modificadas hoy"},
