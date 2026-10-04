@@ -1,0 +1,32 @@
+# Dependabot abre un pull request cuando sale una versión nueva de un módulo de Go
+# o de una acción de GitHub; ci.yml prueba cada uno. Las versiones menores y de
+# parche llegan juntas en un solo PR por semana; las mayores, cada una en el suyo.
+# Los prefijos build: y ci: hacen que las notas de versión las pongan en
+# "Mantenimiento".
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      go-modules:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: build
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: ci

@@ -6,6 +6,9 @@ on:
   push:
     branches:
       - "**"
+      # Las ramas de Dependabot ya se prueban con su pull request; sin esto,
+      # cada actualización se probaría dos veces.
+      - "!dependabot/**"
   pull_request:
   workflow_call:
 
