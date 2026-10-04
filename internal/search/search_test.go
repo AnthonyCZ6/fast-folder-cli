@@ -243,6 +243,33 @@ func TestSearchModifiedRange(t *testing.T) {
 	}
 }
 
+// Una carpeta que coincide con el término pero no con la fecha no se emite,
+// pero su interior se sigue recorriendo, también con Prune. En el modo
+// proyectos, la fecha es la de la carpeta del proyecto.
+func TestSearchModifiedWithPruneAndProjects(t *testing.T) {
+	root := makeTree(t, "a/node_modules", "b/node_modules/x/node_modules", "c/informe/informe", "p1", "p2")
+	writeFiles(t, root, "p1/go.mod", "p2/go.mod")
+	week := time.Now().AddDate(0, 0, -7)
+	for _, dir := range []string{"b/node_modules", "c/informe", "p2"} {
+		setModTime(t, filepath.Join(root, filepath.FromSlash(dir)), week.AddDate(0, 0, -30))
+	}
+
+	got := collect(t, root, Options{Matcher: mustMatcher(t, "node_modules"), ModifiedAfter: week, Prune: true})
+	if want := []string{"a/node_modules", "b/node_modules/x/node_modules"}; !slices.Equal(got, want) {
+		t.Errorf("con Prune: got %v, want %v", got, want)
+	}
+
+	got = collect(t, root, Options{Matcher: mustMatcher(t, "informe"), ModifiedAfter: week})
+	if want := []string{"c/informe/informe"}; !slices.Equal(got, want) {
+		t.Errorf("coincidencia dentro de otra: got %v, want %v", got, want)
+	}
+
+	got = collect(t, root, Options{Projects: true, ModifiedAfter: week})
+	if want := []string{"p1 (Go)"}; !slices.Equal(got, want) {
+		t.Errorf("proyectos: got %v, want %v", got, want)
+	}
+}
+
 func TestSearchPrune(t *testing.T) {
 	root := makeTree(t, "app/node_modules/lib/node_modules/dep", "web/node_modules")
 	m := mustMatcher(t, "node_modules")
