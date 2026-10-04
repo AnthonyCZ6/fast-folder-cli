@@ -316,3 +316,16 @@ func TestSizerMeasuresSeveralFolders(t *testing.T) {
 		t.Errorf("Wait = %+v, want %+v (en el orden de Add)", got, want)
 	}
 }
+
+func TestSizerStopsWhenCancelled(t *testing.T) {
+	root := makeTree(t, "a")
+	writeFiles(t, root, "a/uno.txt")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	s := NewSizer(ctx)
+	s.Add(filepath.Join(root, "a"))
+	if got := s.Wait(); len(got) != 1 || got[0] != (SizeInfo{}) {
+		t.Errorf("con el contexto cancelado, Wait = %+v, want una medida vacía", got)
+	}
+}

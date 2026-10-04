@@ -37,8 +37,9 @@ concurrency:
 
 env:
   # A mano: la versión indicada. En un push: el commit anterior de la rama, o
-  # main si la rama es nueva (entonces "before" son todo ceros).
-  BASE: ${{ inputs.base || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || 'main' }}
+  # main si la rama es nueva ("before" son todo ceros) o si el push fue
+  # forzado (el commit anterior puede haber desaparecido).
+  BASE: ${{ inputs.base || (!github.event.forced && github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || 'main' }}
   COUNT: ${{ inputs.count || '10' }}
 
 jobs:
