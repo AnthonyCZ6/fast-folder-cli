@@ -326,7 +326,8 @@ fcd tesis
 Abre el modo interactivo con la búsqueda de `tesis`; al elegir una carpeta con
 <kbd>Enter</kbd>, la terminal queda dentro de ella. `fcd` acepta las mismas opciones que
 `fast-folder-cli`: `fcd -p D: proyecto`, `fcd --projects`, `fcd -m ayer`... Sin argumentos
-abre el formulario vacío.
+abre el formulario vacío. Si no eliges ninguna carpeta, `fcd` termina con el mismo código de
+salida que `fast-folder-cli` (por ejemplo, 2 si una opción no es válida).
 
 > Si PowerShell dice que *la ejecución de scripts está deshabilitada en este sistema*, `fcd`
 > no puede funcionar con la directiva de ejecución actual. Puedes permitir los scripts
@@ -482,8 +483,9 @@ Tamaño     : 1.6 GB en total (98,412 archivos)
 ```
 
 Con `--size` no se busca dentro de las carpetas encontradas, para no contar dos veces los
-`node_modules` anidados. En el modo interactivo, la tecla <kbd>D</kbd> muestra el tamaño de
-la carpeta seleccionada.
+`node_modules` anidados. Si pulsas <kbd>Ctrl</kbd>+<kbd>C</kbd> antes de que termine, se
+muestran las carpetas encontradas hasta ese momento, sin tamaño (estaría incompleto). En el
+modo interactivo, la tecla <kbd>D</kbd> muestra el tamaño de la carpeta seleccionada.
 
 ### Reglas de coincidencia
 
