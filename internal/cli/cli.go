@@ -304,18 +304,22 @@ func parseArgs(args []string) (config, error) {
 	return cfg, nil
 }
 
+// flagErrors asocia el comienzo de cada error del paquete flag con su
+// traducción.
+var flagErrors = []struct{ prefix, es string }{
+	{"flag provided but not defined: ", "opción desconocida: "},
+	{"flag needs an argument: ", "falta el valor de la opción "},
+}
+
 // translateFlagError traduce al español los errores del paquete flag.
 func translateFlagError(err error) error {
 	if errors.Is(err, flag.ErrHelp) {
 		return err
 	}
 	msg := err.Error()
-	for prefix, es := range map[string]string{
-		"flag provided but not defined: ": "opción desconocida: ",
-		"flag needs an argument: ":        "falta el valor de la opción ",
-	} {
-		if rest, ok := strings.CutPrefix(msg, prefix); ok {
-			return errors.New(es + rest)
+	for _, t := range flagErrors {
+		if rest, ok := strings.CutPrefix(msg, t.prefix); ok {
+			return errors.New(t.es + rest)
 		}
 	}
 	return errors.New("argumentos inválidos: " + msg)
