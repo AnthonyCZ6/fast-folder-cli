@@ -39,9 +39,16 @@ const defaultRoot = "%USERPROFILE%"
 // reemplazan para no abrir ventanas.
 var openExplorer = launch.Explorer
 
-// folderSize calcula cuánto ocupa una carpeta (--size). Las pruebas lo
-// reemplazan para simular una interrupción mientras se mide.
-var folderSize = search.Size
+// folderSizer mide las carpetas encontradas con --size (search.Sizer): cada
+// una empieza a medirse en cuanto aparece, mientras sigue la búsqueda.
+type folderSizer interface {
+	Add(path string)
+	Wait() []search.SizeInfo
+}
+
+// newSizer crea el folderSizer de una búsqueda. Las pruebas lo reemplazan
+// para simular una interrupción mientras se mide.
+var newSizer = func(ctx context.Context) folderSizer { return search.NewSizer(ctx) }
 
 // config contiene las opciones ya interpretadas de la línea de comandos.
 type config struct {
@@ -120,10 +127,14 @@ func runSearch(ctx context.Context, cfg config, q query.Query, root string, stdo
 	p := newPrinter(out, supportsColor(stdout))
 	p.header(q.Describe(), root, cfg.all)
 
-	sum, found := collect(cfg, p, nextResult(results, out))
+	var sizer folderSizer
+	if cfg.size {
+		sizer = newSizer(ctx)
+	}
+	sum, found := collect(cfg, p, nextResult(results, out), sizer)
 	sum.query = q
 	if cfg.size && len(found) > 0 {
-		sum.sized, sum.bytes, sum.files = showSized(ctx, p, found)
+		sum.sized, sum.bytes, sum.files = showSized(ctx, p, found, sizer.Wait())
 	}
 
 	sum.scanned = stats.Scanned()
@@ -158,16 +169,17 @@ func nextResult(results <-chan search.Result, out *bufio.Writer) func() (search.
 }
 
 // collect lee todos los resultados con next. Los muestra en cuanto llegan
-// (con --size los guarda para mostrarlos al final, ordenados por tamaño) y,
-// con --open, abre el primero. Devuelve el recuento en el resumen y las
-// carpetas guardadas.
-func collect(cfg config, p *printer, next func() (search.Result, bool)) (summary, []search.Result) {
+// (con --size los guarda para mostrarlos al final, ordenados por tamaño, y
+// empieza a medirlos con sizer) y, con --open, abre el primero. Devuelve el
+// recuento en el resumen y las carpetas guardadas.
+func collect(cfg config, p *printer, next func() (search.Result, bool), sizer folderSizer) (summary, []search.Result) {
 	var sum summary
 	var found []search.Result
 	for r, ok := next(); ok; r, ok = next() {
 		sum.found++
 		if cfg.size {
 			found = append(found, r)
+			sizer.Add(r.Path)
 		} else {
 			p.match(sum.found, r)
 		}
@@ -231,11 +243,12 @@ type sized struct {
 	search.SizeInfo
 }
 
-// measure calcula el tamaño de cada carpeta y las ordena de mayor a menor.
-func measure(ctx context.Context, found []search.Result) []sized {
+// bySize junta cada carpeta con su tamaño (infos, en el mismo orden) y las
+// ordena de mayor a menor; a igual tamaño, en el orden en que aparecieron.
+func bySize(found []search.Result, infos []search.SizeInfo) []sized {
 	list := make([]sized, len(found))
 	for i, r := range found {
-		list[i] = sized{Result: r, SizeInfo: folderSize(ctx, r.Path)}
+		list[i] = sized{Result: r, SizeInfo: infos[i]}
 	}
 	slices.SortStableFunc(list, func(a, b sized) int {
 		return cmp.Compare(b.Bytes, a.Bytes)
@@ -244,20 +257,17 @@ func measure(ctx context.Context, found []search.Result) []sized {
 }
 
 // showSized muestra al final las carpetas guardadas con --size, de mayor a
-// menor tamaño, y devuelve los totales. Si Ctrl+C llega antes de medirlas
-// todas, sus tamaños estarían incompletos: entonces las muestra sin tamaño, en
-// el orden en que aparecieron, y devuelve measured = false.
-func showSized(ctx context.Context, p *printer, found []search.Result) (measured bool, size, files int64) {
-	var list []sized
-	if ctx.Err() == nil {
-		list = measure(ctx, found)
-	}
+// menor tamaño según infos, y devuelve los totales. Si Ctrl+C llegó antes de
+// medirlas todas, sus tamaños están incompletos: entonces las muestra sin
+// tamaño, en el orden en que aparecieron, y devuelve measured = false.
+func showSized(ctx context.Context, p *printer, found []search.Result, infos []search.SizeInfo) (measured bool, size, files int64) {
 	if ctx.Err() != nil {
 		for i, r := range found {
 			p.match(int64(i+1), r)
 		}
 		return false, 0, 0
 	}
+	list := bySize(found, infos)
 	p.sizes(list)
 	size, files = totals(list)
 	return true, size, files

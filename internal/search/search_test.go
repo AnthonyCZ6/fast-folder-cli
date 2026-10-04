@@ -270,3 +270,22 @@ func TestSize(t *testing.T) {
 		t.Errorf("Size = %+v, want 42 bytes en 4 archivos", info)
 	}
 }
+
+func TestSizerMeasuresSeveralFolders(t *testing.T) {
+	root := makeTree(t, "a/sub", "b", "c")
+	for path, size := range map[string]int{"a/uno.txt": 10, "a/sub/dos.txt": 20, "b/tres.txt": 5} {
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(path)), make([]byte, size), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	s := NewSizer(context.Background())
+	for _, dir := range []string{"a", "b", "c", "no-existe"} {
+		s.Add(filepath.Join(root, dir))
+	}
+	got := s.Wait()
+	want := []SizeInfo{{Bytes: 30, Files: 2}, {Bytes: 5, Files: 1}, {}, {Denied: 1}}
+	if !slices.Equal(got, want) {
+		t.Errorf("Wait = %+v, want %+v (en el orden de Add)", got, want)
+	}
+}

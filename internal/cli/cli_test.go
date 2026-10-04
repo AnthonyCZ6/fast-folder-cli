@@ -324,23 +324,33 @@ func TestRunSizeInterruptedWhileSearching(t *testing.T) {
 	}
 }
 
+// interruptedSizer simula Ctrl+C mientras se miden las carpetas: la primera
+// queda a medias (100 bytes) y las demás sin medir, como con search.Sizer.
+type interruptedSizer struct {
+	cancel context.CancelFunc
+	added  int
+}
+
+func (s *interruptedSizer) Add(string) { s.added++ }
+
+func (s *interruptedSizer) Wait() []search.SizeInfo {
+	s.cancel()
+	infos := make([]search.SizeInfo, s.added)
+	if s.added > 0 {
+		infos[0] = search.SizeInfo{Bytes: 100, Files: 1}
+	}
+	return infos
+}
+
 // Con --size, si Ctrl+C llega mientras se miden las carpetas, se listan todas
 // sin tamaño en lugar de con tamaños a medias o a cero.
 func TestRunSizeInterruptedWhileMeasuring(t *testing.T) {
 	root := makeTree(t, []string{"a/node_modules", "b/node_modules"}, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	// Ctrl+C durante la primera medición: esa carpeta queda a medias y las
-	// demás ya no se miden, como haría search.Size.
-	prev := folderSize
-	folderSize = func(c context.Context, _ string) search.SizeInfo {
-		if c.Err() != nil {
-			return search.SizeInfo{}
-		}
-		cancel()
-		return search.SizeInfo{Bytes: 100, Files: 1}
-	}
-	t.Cleanup(func() { folderSize = prev })
+	prev := newSizer
+	newSizer = func(context.Context) folderSizer { return &interruptedSizer{cancel: cancel} }
+	t.Cleanup(func() { newSizer = prev })
 
 	out := runInterrupted(t, ctx, config{size: true}, root)
 	for _, dir := range []string{"a", "b"} {
