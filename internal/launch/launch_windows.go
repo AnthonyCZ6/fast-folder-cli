@@ -17,27 +17,44 @@ import (
 // explorer.exe devuelve el código de salida 1 incluso cuando funciona, así que
 // solo se lanza el proceso sin esperar ni interpretar su resultado.
 func Explorer(path string) error {
-	return start(exec.Command("explorer", path))
+	return start(explorerCmd(path))
+}
+
+func explorerCmd(path string) *exec.Cmd {
+	return exec.Command("explorer", path)
 }
 
 // Reveal abre en el Explorador la carpeta que contiene file, con file
 // seleccionado.
+func Reveal(file string) error {
+	return start(revealCmd(file))
+}
+
+// revealCmd devuelve la orden de Reveal.
 //
 // explorer.exe no separa sus argumentos como los demás programas: lee
 // "/select," y la ruta como uno solo, y una coma en la ruta lo confunde si no
 // va entre comillas. Por eso la línea de órdenes se escribe a mano en lugar de
 // dejar que Go ponga las comillas. Un nombre de archivo de Windows no puede
 // contener comillas, así que la ruta no necesita más protección.
-func Reveal(file string) error {
+func revealCmd(file string) *exec.Cmd {
 	cmd := exec.Command("explorer.exe")
-	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: revealCmdLine(file)}
-	return start(cmd)
+	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `explorer.exe /select,"` + file + `"`}
+	return cmd
 }
 
-// revealCmdLine devuelve la línea de órdenes de explorer.exe que muestra file
-// seleccionado.
-func revealCmdLine(file string) string {
-	return `explorer.exe /select,"` + file + `"`
+// ShowApp abre en el Explorador la ubicación de un programa: la carpeta de
+// exe con exe seleccionado o, si no se conoce el ejecutable (exe vacío), la
+// carpeta dir.
+func ShowApp(dir, exe string) error {
+	return start(showAppCmd(dir, exe))
+}
+
+func showAppCmd(dir, exe string) *exec.Cmd {
+	if exe != "" {
+		return revealCmd(exe)
+	}
+	return explorerCmd(dir)
 }
 
 // VSCode abre path en Visual Studio Code.
@@ -80,12 +97,18 @@ func findVSCode() (string, error) {
 func Terminal(path string) error {
 	var err error
 	for _, shell := range []string{"pwsh.exe", "powershell.exe"} {
-		cmd := exec.Command(shell, "-NoLogo")
-		cmd.Dir = path
-		cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_CONSOLE}
-		if err = start(cmd); err == nil {
+		if err = start(terminalCmd(shell, path)); err == nil {
 			return nil
 		}
 	}
 	return err
+}
+
+// terminalCmd devuelve la orden que abre shell en una consola nueva, en la
+// carpeta path.
+func terminalCmd(shell, path string) *exec.Cmd {
+	cmd := exec.Command(shell, "-NoLogo")
+	cmd.Dir = path
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_CONSOLE}
+	return cmd
 }

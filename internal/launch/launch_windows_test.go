@@ -3,7 +3,10 @@ package launch
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestFindVSCode(t *testing.T) {
@@ -59,12 +62,44 @@ func TestFindVSCode(t *testing.T) {
 	}
 }
 
+// Estas pruebas comprueban las órdenes que se lanzarían, sin abrir ventanas.
+
+func TestExplorerCmd(t *testing.T) {
+	dir := `C:\Mis cosas\A&B`
+	if got := explorerCmd(dir).Args; !slices.Equal(got, []string{"explorer", dir}) {
+		t.Errorf("argumentos = %q", got)
+	}
+}
+
 // La ruta va entre comillas pegada a "/select,": con espacios o comas en la
 // ruta, explorer.exe abriría otra carpeta.
-func TestRevealCmdLine(t *testing.T) {
-	got := revealCmdLine(`C:\Program Files\Mi App, Inc\app.exe`)
+func TestRevealCmd(t *testing.T) {
+	cmd := revealCmd(`C:\Program Files\Mi App, Inc\app.exe`)
 	want := `explorer.exe /select,"C:\Program Files\Mi App, Inc\app.exe"`
-	if got != want {
-		t.Errorf("revealCmdLine = %s, want %s", got, want)
+	if cmd.SysProcAttr == nil || cmd.SysProcAttr.CmdLine != want {
+		t.Errorf("línea de órdenes = %+v, want %s", cmd.SysProcAttr, want)
+	}
+}
+
+// Con ejecutable se abre su carpeta con él seleccionado; sin él, la carpeta.
+func TestShowAppCmd(t *testing.T) {
+	withExe := showAppCmd(`C:\App`, `C:\App\bin\app.exe`)
+	if withExe.SysProcAttr == nil || withExe.SysProcAttr.CmdLine != `explorer.exe /select,"C:\App\bin\app.exe"` {
+		t.Errorf("con ejecutable: %+v", withExe.SysProcAttr)
+	}
+	if got := showAppCmd(`C:\App`, "").Args; !slices.Equal(got, []string{"explorer", `C:\App`}) {
+		t.Errorf("sin ejecutable: argumentos = %q", got)
+	}
+}
+
+// La terminal se abre en una consola propia y en la carpeta elegida.
+func TestTerminalCmd(t *testing.T) {
+	dir := `C:\Mis cosas\A&B`
+	cmd := terminalCmd("powershell.exe", dir)
+	if !slices.Equal(cmd.Args, []string{"powershell.exe", "-NoLogo"}) || cmd.Dir != dir {
+		t.Errorf("argumentos = %q, carpeta = %q", cmd.Args, cmd.Dir)
+	}
+	if cmd.SysProcAttr == nil || cmd.SysProcAttr.CreationFlags&windows.CREATE_NEW_CONSOLE == 0 {
+		t.Errorf("debería abrirse en una consola nueva: %+v", cmd.SysProcAttr)
 	}
 }
