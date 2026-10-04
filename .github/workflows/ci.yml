@@ -92,8 +92,10 @@ jobs:
         run: |
           grep -v -e '/internal/benchtree/' -e 'fast-folder-cli/main\.go:' coverage.out > coverage-min.out
           total=$(go tool cover -func=coverage-min.out | tail -n 1 | awk '{print $NF}' | tr -d '%')
-          echo "Cobertura sin benchtree ni main.go: ${total}% (mínimo: ${MIN_COVERAGE}%)"
-          echo "Cobertura sin benchtree ni main.go: **${total}%** (mínimo: ${MIN_COVERAGE}%)" >> "$GITHUB_STEP_SUMMARY"
+          # Sin "archivo.go:" en el mensaje: el detector de errores de Go que
+          # instala setup-go lo tomaría por un error de compilación.
+          echo "Cobertura total = ${total}% (mínimo ${MIN_COVERAGE}%, sin contar benchtree ni main)"
+          echo "Cobertura total = **${total}%** (mínimo ${MIN_COVERAGE}%, sin contar benchtree ni main)" >> "$GITHUB_STEP_SUMMARY"
           if awk -v t="$total" -v m="$MIN_COVERAGE" 'BEGIN { exit !(t < m) }'; then
             echo "::error::La cobertura (${total}%) es menor que el mínimo (${MIN_COVERAGE}%)"
             exit 1
