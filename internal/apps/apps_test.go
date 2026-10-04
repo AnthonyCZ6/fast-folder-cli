@@ -66,6 +66,8 @@ func TestRejected(t *testing.T) {
 		{`c:\windows`, true},
 		{`C:\Windows\Installer\{1234}\icono.exe`, true},
 		{`C:\ProgramData\Package Cache\{1234}\setup.exe`, true},
+		{`C:\ProgramData\Package Cache`, true},
+		{`\\servidor\apps\App`, true},
 		{`C:\Program Files\App`, false},
 		{`D:\Juegos\Windows Tools`, false},
 		{`C:\WindowsApps2\app`, false},
@@ -116,6 +118,8 @@ func TestBuild(t *testing.T) {
 		"Chrome/Application/chrome.exe",
 		"Juego/unins000.exe",
 		"Office/root/EXCEL.EXE",
+		"Office/root/WINWORD.EXE",
+		"7-Zip/7zFM.exe",
 		"Herramienta/tool.cmd",
 	)
 	at := func(rel string) string { return filepath.Join(base, filepath.FromSlash(rel)) }
@@ -134,8 +138,12 @@ func TestBuild(t *testing.T) {
 		// carpeta, pero no se selecciona el desinstalador.
 		{name: "Juego", displayIcon: at("Juego/unins000.exe"), uninstall: `"` + at("Juego/unins000.exe") + `" /SILENT`},
 		// El icono es una copia del instalador en C:\Windows\Installer: se
-		// usa la carpeta de instalación.
+		// usa la carpeta de instalación. En ella hay dos ejecutables de App
+		// Paths, así que no se elige ninguno.
 		{name: "Microsoft 365", installLocation: at("Office"), displayIcon: `C:\Windows\Installer\{1234}\icono.exe`},
+		// Sin icono, pero con un solo ejecutable de App Paths en su carpeta:
+		// ese es el suyo.
+		{name: "7-Zip", installLocation: at("7-Zip")},
 		{name: "Componente", installLocation: at("Chrome"), hidden: true},
 		{name: "   ", installLocation: at("Chrome")},
 		{name: "Sin carpeta", installLocation: at("NoExiste")},
@@ -144,23 +152,45 @@ func TestBuild(t *testing.T) {
 	appPaths := []string{
 		at("Chrome/Application/chrome.exe"), // ya es el ejecutable de Google Chrome
 		`"` + at("Office/root/EXCEL.EXE") + `"`,
+		at("Office/root/EXCEL.EXE"), // registrado también para el usuario
+		at("Office/root/WINWORD.EXE"),
+		at("7-Zip/7zFM.exe"),
 		at("NoExiste/otra.exe"),
 		at("Herramienta/tool.cmd"), // no es un .exe
 	}
 
 	want := []App{
+		{Name: "7-Zip", Dir: at("7-Zip"), Exe: at("7-Zip/7zFM.exe")},
 		{Name: "EXCEL", Dir: at("Office/root"), Exe: at("Office/root/EXCEL.EXE")},
 		{Name: "Google Chrome", Dir: at("Chrome/Application"), Exe: at("Chrome/Application/chrome.exe"), Publisher: "Google LLC", Version: "120.0"},
 		{Name: "Juego", Dir: at("Juego")},
 		{Name: "Microsoft 365", Dir: at("Office")},
+		{Name: "WINWORD", Dir: at("Office/root"), Exe: at("Office/root/WINWORD.EXE")},
 	}
 	if got := build(entries, appPaths, nil); !slices.Equal(got, want) {
 		t.Errorf("build =\n%+v\nwant\n%+v", got, want)
 	}
 
-	chromeOnly := func(name string) bool { return strings.Contains(strings.ToLower(name), "chrome") }
-	if got := build(entries, appPaths, chromeOnly); len(got) != 1 || got[0].Name != "Google Chrome" {
-		t.Errorf("build con filtro = %+v, want solo Google Chrome", got)
+	// El filtro se aplica al nombre de la app y al de su ejecutable.
+	containing := func(term string) func(string) bool {
+		return func(name string) bool { return strings.Contains(strings.ToLower(name), term) }
+	}
+	tests := []struct {
+		term string
+		want []string
+	}{
+		{"chrome", []string{"Google Chrome"}},
+		{"7zfm", []string{"7-Zip"}},
+		{"word", []string{"WINWORD"}},
+	}
+	for _, tt := range tests {
+		var names []string
+		for _, a := range build(entries, appPaths, containing(tt.term)) {
+			names = append(names, a.Name)
+		}
+		if !slices.Equal(names, tt.want) {
+			t.Errorf("build con %q = %q, want %q", tt.term, names, tt.want)
+		}
 	}
 }
 

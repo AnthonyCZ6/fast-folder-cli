@@ -58,6 +58,7 @@ func TestParseArgsErrors(t *testing.T) {
 		{[]string{"--apps", "--projects"}, "--apps y --projects no se pueden usar juntas"},
 		{[]string{"--apps", "-m", "hoy"}, "--modified no se aplica a las apps"},
 		{[]string{"--apps", "x", "-s"}, "--size no se aplica a las apps"},
+		{[]string{"--apps", "-a"}, "--all no se aplica a las apps"},
 		{[]string{"--apps", "-p", "D:"}, "--path no se aplica a las apps: se buscan entre los programas instalados"},
 	}
 	for _, tt := range tests {
@@ -446,7 +447,7 @@ func TestRunApps(t *testing.T) {
 
 func TestRunAppsWithoutTermListsAll(t *testing.T) {
 	shown := stubApps(t, testApps, nil)
-	out := runOK(t, "--apps", "-a") // -a no afecta a las apps
+	out := runOK(t, "--apps")
 	if !strings.Contains(out, "[2] Paint.NET") || !strings.Contains(out, "Resultados : 2 apps encontradas") {
 		t.Errorf("deberían aparecer todas las apps:\n%s", out)
 	}

@@ -397,6 +397,35 @@ func TestAppsFormSkipsFields(t *testing.T) {
 	}
 }
 
+// Una app sin ejecutable conocido se abre en su carpeta, sin seleccionar nada.
+func TestAppsOpenWithoutExe(t *testing.T) {
+	m, rec := newTestModel(testLocations...)
+	rec.apps = testApps
+	m = runSearch(t, selectApps(m)) // sin término: todas
+	m = send(m, keys("end", "e")...)
+	if want := []string{"show:" + testApps[1].Dir + "|"}; !slices.Equal(rec.calls, want) {
+		t.Errorf("acciones = %v, want %v", rec.calls, want)
+	}
+}
+
+// Si se vuelve al formulario con ← antes de que lleguen las apps, la
+// respuesta de esa búsqueda se descarta.
+func TestAbandonedAppsSearchIsIgnored(t *testing.T) {
+	m, rec := newTestModel(testLocations...)
+	rec.apps = testApps
+	next, _ := selectApps(m).Update(key("enter"))
+	m = next.(model)
+	if !m.searching {
+		t.Fatal("la búsqueda de apps debería estar en curso")
+	}
+	gen := m.gen
+	m = send(m, keys("left")...)
+	m = send(m, appsMsg{gen: gen, list: testApps})
+	if len(m.results) != 0 || len(m.appList) != 0 || m.screen != screenForm {
+		t.Errorf("la búsqueda abandonada no debería mostrar resultados: %+v", m.appList)
+	}
+}
+
 func TestAppsSearchError(t *testing.T) {
 	m, rec := newTestModel(testLocations...)
 	rec.appsErr = errors.New("sin registro")

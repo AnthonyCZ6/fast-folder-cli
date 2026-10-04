@@ -15,6 +15,7 @@ func (m model) updateResults(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "left", "backspace":
 		m.cancelSearch()
+		m.gen++ // lo que llegue de la búsqueda abandonada se descarta
 		m.searching = false
 		m.screen = screenForm
 		return m.setFocus(fieldTerm)

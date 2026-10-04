@@ -471,8 +471,8 @@ Explorador con el ejecutable seleccionado:
   `WINWORD` de Microsoft 365.
 - No se muestran los componentes del sistema ni las actualizaciones, ni las apps de la
   Microsoft Store, cuya carpeta (`WindowsApps`) está protegida.
-- Sin término, `fast --apps` las lista todas. `-p`, `-m`, `-s` y `--projects` no se aplican
-  a las apps.
+- Sin término, `fast --apps` las lista todas. `-p`, `-m`, `-s`, `-a` y `--projects` no se
+  aplican a las apps.
 - `fcd --apps steam` te deja en la carpeta de la app elegida, por ejemplo para ejecutar
   sus herramientas desde la terminal.
 

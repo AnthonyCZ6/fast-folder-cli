@@ -62,8 +62,8 @@ func (m model) startSearch() (tea.Model, tea.Cmd) {
 		return m.setFocus(fieldTerm)
 	}
 
-	m.cancelSearch()
 	if q.Kind == query.Apps {
+		m.cancelSearch()
 		m = m.begin(q, "")
 		return m.withSpinner(findApps(m.gen, m.acts.findApps, q.Match))
 	}
@@ -72,6 +72,7 @@ func (m model) startSearch() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	m.cancelSearch()
 	ctx, cancel := context.WithCancel(context.Background())
 	loc := m.locations[m.locIndex]
 	ch, stats := search.Start(ctx, q.Options(loc.Path, m.hidden))

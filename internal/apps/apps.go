@@ -34,10 +34,12 @@ type entry struct {
 }
 
 // build convierte las entradas del registro y las rutas de App Paths en la
-// lista de aplicaciones cuyo nombre acepta match (todas si match es nil),
-// ordenada por nombre y sin repetidas. Descarta las entradas ocultas, las que
-// no tienen nombre y las que no tienen una carpeta que exista.
+// lista de aplicaciones que acepta match (todas si match es nil; ver
+// finish), ordenada por nombre y sin repetidas. Descarta las entradas
+// ocultas, las que no tienen nombre y las que no tienen una carpeta que
+// exista.
 func build(entries []entry, appPaths []string, match func(string) bool) []App {
+	exes := existingExes(appPaths)
 	var list []App
 	used := map[string]bool{} // ejecutables que ya son de una aplicación
 	for _, e := range entries {
@@ -45,13 +47,54 @@ func build(entries []entry, appPaths []string, match func(string) bool) []App {
 		if !ok {
 			continue
 		}
+		a = withAppPath(a, exes)
 		if a.Exe != "" {
 			used[pathKey(a.Exe)] = true
 		}
 		list = append(list, a)
 	}
-	list = append(list, fromAppPaths(appPaths, used)...)
+	list = append(list, fromAppPaths(exes, used)...)
 	return finish(list, match)
+}
+
+// existingExes limpia las rutas de App Paths y deja, sin repetir, las de los
+// .exe que existen.
+func existingExes(appPaths []string) []string {
+	seen := map[string]bool{}
+	var exes []string
+	for _, p := range appPaths {
+		exe := cleanPath(p)
+		if seen[pathKey(exe)] || !isExe(exe) || !isFile(exe) {
+			continue
+		}
+		seen[pathKey(exe)] = true
+		exes = append(exes, exe)
+	}
+	return exes
+}
+
+// withAppPath completa una aplicación sin ejecutable conocido con el único
+// ejecutable de exes (App Paths) que esté en su carpeta, como 7zFM.exe en la
+// de 7-Zip. Si hay varios (Microsoft 365 registra EXCEL, WINWORD...), no
+// elige ninguno y cada uno aparece como una aplicación aparte.
+func withAppPath(a App, exes []string) App {
+	if a.Exe != "" {
+		return a
+	}
+	found := ""
+	for _, exe := range exes {
+		if !within(exe, a.Dir) {
+			continue
+		}
+		if found != "" {
+			return a
+		}
+		found = exe
+	}
+	if found != "" {
+		a.Exe, a.Dir = found, filepath.Dir(found)
+	}
+	return a
 }
 
 // fromEntry averigua la carpeta y el ejecutable de una entrada del registro.
@@ -111,32 +154,36 @@ func fallbackDir(e entry) string {
 	return ""
 }
 
-// fromAppPaths convierte en aplicaciones los ejecutables de App Paths que no
-// son ya los de otra aplicación (used). Así aparecen, por ejemplo, Excel o
-// Word, que el registro agrupa como "Microsoft 365". Su nombre es el del
-// ejecutable sin la extensión.
-func fromAppPaths(appPaths []string, used map[string]bool) []App {
+// fromAppPaths convierte en aplicaciones los ejecutables de App Paths (exes)
+// que no son ya los de otra aplicación (used). Así aparecen, por ejemplo,
+// Excel o Word, que el registro agrupa como "Microsoft 365". Su nombre es el
+// del ejecutable.
+func fromAppPaths(exes []string, used map[string]bool) []App {
 	var list []App
-	for _, p := range appPaths {
-		exe := cleanPath(p)
-		if used[pathKey(exe)] || !isExe(exe) || !isFile(exe) {
-			continue
+	for _, exe := range exes {
+		if !used[pathKey(exe)] {
+			list = append(list, App{Name: exeName(exe), Dir: filepath.Dir(exe), Exe: exe})
 		}
-		name := strings.TrimSuffix(filepath.Base(exe), filepath.Ext(exe))
-		list = append(list, App{Name: name, Dir: filepath.Dir(exe), Exe: exe})
 	}
 	return list
 }
 
-// finish deja en list las aplicaciones que acepta match, quita las repetidas
-// (mismo nombre y misma carpeta, como las que se registran a la vez para
-// todos los usuarios y para el actual) y las ordena por nombre.
+// exeName devuelve el nombre del ejecutable exe sin la extensión: "EXCEL".
+func exeName(exe string) string {
+	return strings.TrimSuffix(filepath.Base(exe), filepath.Ext(exe))
+}
+
+// finish deja en list las aplicaciones cuyo nombre o el de su ejecutable
+// acepta match ("excel" encuentra "Microsoft 365" si su ejecutable es
+// EXCEL.EXE), quita las repetidas (mismo nombre y misma carpeta, como las que
+// se registran a la vez para todos los usuarios y para el actual) y las
+// ordena por nombre.
 func finish(list []App, match func(string) bool) []App {
 	seen := map[string]bool{}
 	var out []App
 	for _, a := range list {
 		k := strings.ToLower(a.Name) + "|" + pathKey(a.Dir)
-		if seen[k] || (match != nil && !match(a.Name)) {
+		if seen[k] || !accepts(match, a) {
 			continue
 		}
 		seen[k] = true
@@ -149,6 +196,12 @@ func finish(list []App, match func(string) bool) []App {
 		)
 	})
 	return out
+}
+
+// accepts indica si match acepta el nombre de a o el de su ejecutable. Sin
+// match, las acepta todas.
+func accepts(match func(string) bool, a App) bool {
+	return match == nil || match(a.Name) || (a.Exe != "" && match(exeName(a.Exe)))
 }
 
 // cleanPath quita los espacios y las comillas que rodean una ruta del
@@ -207,17 +260,19 @@ func quoted(s string) (string, bool) {
 
 // rejected indica si path no puede ser la ubicación de una aplicación: la
 // raíz de una unidad, la carpeta de Windows (allí están msiexec.exe y las
-// copias de los instaladores MSI que algunos programas usan como icono) o la
-// caché de paquetes de los instaladores (Package Cache).
+// copias de los instaladores MSI que algunos programas usan como icono), la
+// caché de paquetes de los instaladores (Package Cache) o una carpeta de red
+// (\\servidor\...): comprobar si existe podría bloquear la búsqueda o
+// conectarse a un servidor que nombre el registro.
 func rejected(path string) bool {
 	p := strings.TrimRight(pathKey(path), "/")
-	if len(p) <= 2 {
+	if len(p) <= 2 || strings.HasPrefix(p, "//") {
 		return true
 	}
 	if p[1] == ':' && strings.HasPrefix(p[2:]+"/", "/windows/") {
 		return true
 	}
-	return strings.Contains(p, "/package cache/")
+	return strings.Contains(p+"/", "/package cache/")
 }
 
 // usable indica si path es una ruta absoluta que puede ser la ubicación de

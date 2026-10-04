@@ -97,6 +97,8 @@ func (cfg config) checkApps() error {
 		return errors.New("--modified no se aplica a las apps")
 	case cfg.size:
 		return errors.New("--size no se aplica a las apps")
+	case cfg.all:
+		return errors.New("--all no se aplica a las apps")
 	case cfg.root != defaultRoot:
 		return errors.New("--path no se aplica a las apps: se buscan entre los programas instalados")
 	}
@@ -478,7 +480,7 @@ Opciones:
       --apps                Busca aplicaciones instaladas por su nombre (las de
                             Configuración → Aplicaciones). Con -o abre su
                             ubicación con el ejecutable seleccionado.
-  -s, --size               Calcula cuánto ocupa cada carpeta encontrada y las
+  -s, --size                Calcula cuánto ocupa cada carpeta encontrada y las
                             ordena de mayor a menor.
   -a, --all                 Incluye carpetas ocultas y de sistema.
   -o, --open                Abre la primera coincidencia en el Explorador de Windows.
