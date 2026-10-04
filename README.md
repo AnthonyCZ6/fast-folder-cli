@@ -684,5 +684,7 @@ instalador de un solo comando descarga el ejecutable desde GitHub porque tú lo 
 - GitHub: [@AnthonyCZ6](https://github.com/AnthonyCZ6)
 - Reporta errores o propone mejoras en
   [Issues](https://github.com/AnthonyCZ6/fast-folder-cli/issues).
+- ¿Encontraste una vulnerabilidad? Repórtala en privado siguiendo la
+  [política de seguridad](SECURITY.md).
 
 Si esta herramienta te ahorra tiempo, ¡considera darle una ⭐ al repositorio!
