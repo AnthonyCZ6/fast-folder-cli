@@ -47,3 +47,31 @@ func TestParseErrors(t *testing.T) {
 		}
 	}
 }
+
+// FuzzParse comprueba que ninguna entrada provoca un pánico, que los errores
+// son siempre ErrInvalid y que todo periodo aceptado tiene etiqueta y un
+// intervalo bien formado.
+func FuzzParse(f *testing.F) {
+	for _, seed := range []string{
+		"hoy", "ayer", "semana", "mes", "año", "7d", "1d", "2026-09-01",
+		"", "0d", "-3d", "99999999999d", "2026-13-01",
+	} {
+		f.Add(seed)
+	}
+	now := time.Date(2026, 10, 2, 15, 30, 0, 0, time.Local)
+	f.Fuzz(func(t *testing.T, input string) {
+		r, err := Parse(input, now)
+		if err != nil {
+			if !errors.Is(err, ErrInvalid) {
+				t.Errorf("Parse(%q) error = %v, want ErrInvalid", input, err)
+			}
+			return
+		}
+		if r.Label == "" {
+			t.Errorf("Parse(%q) = %+v: falta la etiqueta", input, r)
+		}
+		if !r.Before.IsZero() && !r.After.Before(r.Before) {
+			t.Errorf("Parse(%q) = %+v: el inicio no es anterior al final", input, r)
+		}
+	})
+}

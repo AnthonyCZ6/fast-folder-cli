@@ -259,3 +259,22 @@ func TestRunWithoutOpenDoesNotOpen(t *testing.T) {
 	}
 }
 
+// FuzzParseArgs comprueba que ninguna combinación de argumentos provoca un
+// pánico: cualquier entrada debe terminar en una configuración o en un error.
+func FuzzParseArgs(f *testing.F) {
+	for _, seed := range []string{
+		"-n proyecto",
+		"-a mis proyectos -o",
+		"-- -raro",
+		"--projects -m semana -s",
+		"--path= -n",
+		"-x",
+		"--",
+		"",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, line string) {
+		_, _ = parseArgs(strings.Fields(line))
+	})
+}

@@ -47,3 +47,33 @@ func TestMatcherErrors(t *testing.T) {
 		}
 	}
 }
+
+// FuzzMatcher comprueba que ningún término ni nombre provoca un pánico y que
+// fold es idempotente: plegar un nombre ya plegado no lo cambia, así que
+// Match da lo mismo con el nombre original que con su forma plegada.
+func FuzzMatcher(f *testing.F) {
+	for _, seed := range [][2]string{
+		{"cancion", "Canción"},
+		{"proy*", "Proyectos"},
+		{"[ab]ackup", "Backup"},
+		{"cafe", "Café"},
+		{"ñ", "AÑO"},
+		{"[", "x"},
+		{"x", "\xff"},
+	} {
+		f.Add(seed[0], seed[1])
+	}
+	f.Fuzz(func(t *testing.T, term, name string) {
+		folded := fold(name)
+		if again := fold(folded); again != folded {
+			t.Errorf("fold no es idempotente: fold(%q) = %q, pero fold(%q) = %q", name, folded, folded, again)
+		}
+		m, err := NewMatcher(term)
+		if err != nil {
+			return
+		}
+		if m.Match(name) != m.Match(folded) {
+			t.Errorf("NewMatcher(%q): Match(%q) != Match(%q)", term, name, folded)
+		}
+	})
+}
