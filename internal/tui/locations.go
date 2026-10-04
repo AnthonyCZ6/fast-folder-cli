@@ -2,7 +2,11 @@ package tui
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/config"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/pathutil"
 )
 
 // location es una carpeta raíz que se puede elegir con las flechas.
@@ -12,13 +16,23 @@ type location struct {
 }
 
 // defaultLocations devuelve las ubicaciones ofrecidas en el formulario: las
-// carpetas habituales del usuario, la carpeta actual y el resto (AppData,
-// unidades...). Se omiten las que no existen y las repetidas.
-func defaultLocations() []location {
+// propias del archivo de configuración (custom), las carpetas habituales del
+// usuario, la carpeta actual, las elegidas hace poco (recent) y el resto
+// (AppData, unidades...). Se omiten las que no existen y las repetidas.
+func defaultLocations(custom []config.Location, recent []string) []location {
 	primary, secondary := platformLocations()
-	all := primary
+	var all []location
+	for _, c := range custom {
+		if path, err := pathutil.Resolve(c.Path); err == nil {
+			all = append(all, location{Label: c.Name, Path: path})
+		}
+	}
+	all = append(all, primary...)
 	if wd, err := os.Getwd(); err == nil {
 		all = append(all, location{Label: "Carpeta actual", Path: wd})
+	}
+	for _, dir := range recent {
+		all = append(all, location{Label: "Reciente: " + filepath.Base(dir), Path: dir})
 	}
 	all = append(all, secondary...)
 

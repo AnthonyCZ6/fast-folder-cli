@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/apps"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/config"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
@@ -59,9 +60,10 @@ func send(m model, msgs ...tea.Msg) model {
 // "explorer:C:\ruta" o "show:C:\carpeta|C:\carpeta\app.exe", y hace que la
 // búsqueda de apps encuentre las de apps (o falle con appsErr).
 type recorder struct {
-	calls   []string
-	apps    []apps.App
-	appsErr error
+	calls      []string
+	apps       []apps.App
+	appsErr    error
+	remembered []string // carpetas guardadas entre las recientes
 }
 
 func (r *recorder) actions() actions {
@@ -89,6 +91,7 @@ func (r *recorder) actions() actions {
 			}
 			return found, r.appsErr
 		},
+		remember: func(dir string) { r.remembered = append(r.remembered, dir) },
 	}
 }
 
@@ -613,8 +616,66 @@ func TestFormView(t *testing.T) {
 	}
 }
 
+// Las ubicaciones propias van primero (las que no existen se omiten) y las
+// recientes aparecen con su nombre; una reciente repetida no se duplica.
+func TestDefaultLocationsWithPrefs(t *testing.T) {
+	proyectos := t.TempDir()
+	reciente := filepath.Join(t.TempDir(), "tesis")
+	if err := os.Mkdir(reciente, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	custom := []config.Location{
+		{Name: "No existe", Path: filepath.Join(proyectos, "no-existe")},
+		{Name: "Proyectos", Path: proyectos},
+	}
+	locs := defaultLocations(custom, []string{reciente, proyectos})
+	if locs[0] != (location{Label: "Proyectos", Path: proyectos}) {
+		t.Errorf("primera ubicación = %+v, want Proyectos", locs[0])
+	}
+	var labels []string
+	for _, l := range locs {
+		labels = append(labels, l.Label)
+	}
+	if !slices.Contains(labels, "Reciente: tesis") || slices.Contains(labels, "No existe") {
+		t.Errorf("ubicaciones = %q", labels)
+	}
+	if slices.Contains(labels, "Reciente: "+filepath.Base(proyectos)) {
+		t.Errorf("una reciente que ya es ubicación propia no debería repetirse: %q", labels)
+	}
+}
+
+// Al elegir una carpeta con Enter se guarda entre las recientes; al abrir una
+// app, no.
+func TestChooseRemembersFolders(t *testing.T) {
+	m, rec := newTestModel(testLocations...)
+	m = withResults(m, `C:\a\uno`, `C:\a\dos`)
+	send(m, keys("down", "enter")...)
+	if want := []string{`C:\a\dos`}; !slices.Equal(rec.remembered, want) {
+		t.Errorf("recientes = %q, want %q", rec.remembered, want)
+	}
+
+	m, rec = newTestModel(testLocations...)
+	rec.apps = testApps
+	m = runSearch(t, selectApps(m))
+	send(m, keys("enter")...)
+	if len(rec.remembered) != 0 {
+		t.Errorf("abrir una app no debería guardarla entre las recientes: %q", rec.remembered)
+	}
+}
+
+// Las carpetas excluidas no aparecen en los resultados.
+func TestSearchExcludes(t *testing.T) {
+	root := makeTree(t, "informe", "node_modules/informe")
+	m, _ := newTestModel(location{Label: "Temporal", Path: root})
+	m = m.apply(Options{Term: "informe", Exclude: []string{"node_modules"}})
+	m = drain(t, m, m.initCmd)
+	if len(m.results) != 1 || m.results[0].Path != filepath.Join(root, "informe") {
+		t.Errorf("resultados = %+v, want solo %s", m.results, filepath.Join(root, "informe"))
+	}
+}
+
 func TestDefaultLocations(t *testing.T) {
-	locs := defaultLocations()
+	locs := defaultLocations(nil, nil)
 	if len(locs) == 0 {
 		t.Fatal("no hay ubicaciones")
 	}

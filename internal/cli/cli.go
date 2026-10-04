@@ -374,6 +374,8 @@ func runInteractive(cfg config, stdout, stderr io.Writer, version string) int {
 		Kind:     cfg.kind(),
 		Modified: cfg.modified,
 		CDFile:   cfg.cdFile,
+		Exclude:  cfg.exclude,
+		Prefs:    cfg.prefs,
 	}
 	if cfg.root != defaultRoot {
 		root, err := pathutil.Resolve(cfg.root)

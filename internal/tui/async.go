@@ -75,7 +75,9 @@ func (m model) startSearch() (tea.Model, tea.Cmd) {
 	m.cancelSearch()
 	ctx, cancel := context.WithCancel(context.Background())
 	loc := m.locations[m.locIndex]
-	ch, stats := search.Start(ctx, q.Options(loc.Path, m.hidden))
+	opts := q.Options(loc.Path, m.hidden)
+	opts.Exclude = m.exclude
+	ch, stats := search.Start(ctx, opts)
 	m = m.begin(q, loc.Path)
 	m.pending, m.cancel, m.stats = ch, cancel, stats
 	return m.withSpinner(waitForResults(m.gen, ch))

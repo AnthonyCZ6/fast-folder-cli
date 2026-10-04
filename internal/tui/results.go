@@ -63,6 +63,9 @@ func (m model) choose() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+	if len(m.appList) == 0 {
+		m.acts.remember(path) // las carpetas elegidas, no las apps
+	}
 	if m.cdFile == "" {
 		return m.openSelected()
 	}

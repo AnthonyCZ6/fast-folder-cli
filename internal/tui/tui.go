@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/apps"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/config"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/launch"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
@@ -26,13 +27,19 @@ type Options struct {
 	Kind     query.Kind // qué se busca
 	Modified string     // periodo de modificación, como en --modified
 	CDFile   string     // si no está vacío, Enter escribe aquí la carpeta elegida y sale (fcd)
+	Exclude  []string   // carpetas que no se muestran ni se recorren
+
+	// Prefs son las preferencias del archivo de configuración: ubicaciones
+	// propias, editor, terminal y carpetas recientes.
+	Prefs config.Config
 }
 
 // Run abre la interfaz interactiva y bloquea hasta que el usuario sale. Si
 // opts incluye un término, proyectos, apps o una fecha, la búsqueda empieza
 // al abrir.
 func Run(version string, opts Options) error {
-	m := newModel(version, defaultLocations(), defaultActions())
+	recent := config.LoadRecent(opts.Prefs.RecentLimit())
+	m := newModel(version, defaultLocations(opts.Prefs.Locations, recent), actionsFor(opts.Prefs))
 	m = m.apply(opts)
 	final, err := tea.NewProgram(m).Run()
 	if fm, ok := final.(model); ok {
@@ -60,16 +67,25 @@ type actions struct {
 	copyPath func(string) error
 	showApp  func(dir, exe string) error
 	findApps func(match func(string) bool) ([]apps.App, error)
+	remember func(dir string) // guarda una carpeta elegida entre las recientes
 }
 
-func defaultActions() actions {
+// actionsFor devuelve las acciones reales, con el editor, la terminal y las
+// carpetas recientes de las preferencias p.
+func actionsFor(p config.Config) actions {
+	remember := func(string) {}
+	if p.RecentLimit() > 0 {
+		// Si no se puede guardar, solo se pierde una sugerencia.
+		remember = func(dir string) { _ = config.AddRecent(dir) }
+	}
 	return actions{
 		explorer: launch.Explorer,
-		code:     launch.VSCode,
-		terminal: launch.Terminal,
+		code:     func(path string) error { return launch.Editor(p.Editor, path) },
+		terminal: func(path string) error { return launch.TerminalWith(p.Terminal, path) },
 		copyPath: launch.CopyPath,
 		showApp:  launch.ShowApp,
 		findApps: apps.Find,
+		remember: remember,
 	}
 }
 
@@ -90,6 +106,7 @@ type model struct {
 	dates     []dateOption
 	dateIndex int
 	hidden    bool
+	exclude   []string // carpetas que no se muestran ni se recorren
 	formErr   string
 
 	// Resultados.
@@ -144,6 +161,7 @@ func (m model) apply(opts Options) model {
 	m.input.SetValue(opts.Term)
 	m.input.CursorEnd()
 	m.hidden = opts.Hidden
+	m.exclude = opts.Exclude
 	m.cdFile = opts.CDFile
 	for i, k := range kindOptions {
 		if k.kind == opts.Kind {
