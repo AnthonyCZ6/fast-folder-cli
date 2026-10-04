@@ -2,6 +2,7 @@ package launch
 
 import (
 	"testing"
+	"time"
 
 	"github.com/atotto/clipboard"
 )
@@ -18,7 +19,15 @@ func TestCopyPath(t *testing.T) {
 	if prevErr == nil {
 		t.Cleanup(func() { _ = clipboard.WriteAll(prev) })
 	}
-	if got, err := clipboard.ReadAll(); err != nil || got != want {
-		t.Errorf("portapapeles = %q, %v; want %q", got, err, want)
+	// Otro programa (el historial del portapapeles, por ejemplo) puede tenerlo
+	// abierto un instante justo después de escribir: se reintenta un poco.
+	var got string
+	var err error
+	for range 10 {
+		if got, err = clipboard.ReadAll(); err == nil && got == want {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
+	t.Errorf("portapapeles = %q, %v; want %q", got, err, want)
 }
