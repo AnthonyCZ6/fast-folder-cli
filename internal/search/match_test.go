@@ -1,6 +1,9 @@
 package search
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestMatcher(t *testing.T) {
 	tests := []struct {
@@ -48,9 +51,22 @@ func TestMatcherErrors(t *testing.T) {
 	}
 }
 
-// FuzzMatcher comprueba que ningún término ni nombre provoca un pánico y que
-// fold es idempotente: plegar un nombre ya plegado no lo cambia, así que
-// Match da lo mismo con el nombre original que con su forma plegada.
+// accented pone acento a las vocales minúsculas y tilde a la n.
+var accented = strings.NewReplacer("a", "á", "e", "é", "i", "í", "o", "ó", "u", "ü", "n", "ñ")
+
+// isASCII indica si s solo contiene caracteres ASCII.
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
+}
+
+// FuzzMatcher comprueba que ningún término ni nombre provoca un pánico, que
+// fold es idempotente y que Match no distingue mayúsculas (en nombres ASCII,
+// donde pasar a mayúsculas no pierde información) ni acentos.
 func FuzzMatcher(f *testing.F) {
 	for _, seed := range [][2]string{
 		{"cancion", "Canción"},
@@ -72,8 +88,12 @@ func FuzzMatcher(f *testing.F) {
 		if err != nil {
 			return
 		}
-		if m.Match(name) != m.Match(folded) {
-			t.Errorf("NewMatcher(%q): Match(%q) != Match(%q)", term, name, folded)
+		got := m.Match(name)
+		if upper := strings.ToUpper(name); isASCII(name) && m.Match(upper) != got {
+			t.Errorf("NewMatcher(%q): Match(%q) = %v, pero Match(%q) = %v", term, name, got, upper, !got)
+		}
+		if acc := accented.Replace(name); m.Match(acc) != got {
+			t.Errorf("NewMatcher(%q): Match(%q) = %v, pero Match(%q) = %v", term, name, got, acc, !got)
 		}
 	})
 }
