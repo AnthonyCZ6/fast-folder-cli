@@ -2,12 +2,16 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
 
 func TestParseArgs(t *testing.T) {
@@ -279,6 +283,70 @@ func TestRunWithoutOpenDoesNotOpen(t *testing.T) {
 	runOK(t, "informe", "-p", root)
 	if len(*opened) != 0 {
 		t.Errorf("sin -o no debe abrirse nada; se abrió %q", *opened)
+	}
+}
+
+// runInterrupted busca node_modules en root con runSearch y ctx, que la
+// prueba cancela a mitad de camino. Comprueba que termina como interrumpida y
+// sin mostrar tamaños, y devuelve la salida.
+func runInterrupted(t *testing.T, ctx context.Context, cfg config, root string) string {
+	t.Helper()
+	q, err := query.New("node_modules", false, "", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := runSearch(ctx, cfg, q, root, &stdout, &stderr); code != exitInterrupted {
+		t.Fatalf("runSearch = %d, want %d; stderr: %s", code, exitInterrupted, stderr.String())
+	}
+	out := stdout.String()
+	if strings.Contains(out, "bytes") || strings.Contains(out, "Tamaño") {
+		t.Errorf("interrumpida, no debe mostrar tamaños (estarían incompletos):\n%s", out)
+	}
+	return out
+}
+
+// Con --size, si Ctrl+C llega durante la búsqueda, se listan sin tamaño las
+// carpetas ya encontradas en lugar de ninguna.
+func TestRunSizeInterruptedWhileSearching(t *testing.T) {
+	root := makeTree(t, []string{"a/node_modules", "b/node_modules"}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// --open llama a openExplorer en cuanto aparece la primera carpeta: ahí
+	// se simula Ctrl+C.
+	prev := openExplorer
+	openExplorer = func(string) error { cancel(); return nil }
+	t.Cleanup(func() { openExplorer = prev })
+
+	out := runInterrupted(t, ctx, config{size: true, open: true}, root)
+	if !strings.Contains(out, "  [1] ") {
+		t.Errorf("no se listó ninguna de las carpetas encontradas:\n%s", out)
+	}
+}
+
+// Con --size, si Ctrl+C llega mientras se miden las carpetas, se listan todas
+// sin tamaño en lugar de con tamaños a medias o a cero.
+func TestRunSizeInterruptedWhileMeasuring(t *testing.T) {
+	root := makeTree(t, []string{"a/node_modules", "b/node_modules"}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Ctrl+C durante la primera medición: esa carpeta queda a medias y las
+	// demás ya no se miden, como haría search.Size.
+	prev := folderSize
+	folderSize = func(c context.Context, _ string) search.SizeInfo {
+		if c.Err() != nil {
+			return search.SizeInfo{}
+		}
+		cancel()
+		return search.SizeInfo{Bytes: 100, Files: 1}
+	}
+	t.Cleanup(func() { folderSize = prev })
+
+	out := runInterrupted(t, ctx, config{size: true}, root)
+	for _, dir := range []string{"a", "b"} {
+		if !strings.Contains(out, "] "+filepath.Join(root, dir, "node_modules")+"\n") {
+			t.Errorf("falta %s/node_modules en la lista:\n%s", dir, out)
+		}
 	}
 }
 

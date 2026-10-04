@@ -122,11 +122,8 @@ func runSearch(ctx context.Context, cfg config, q query.Query, root string, stdo
 
 	sum, found := collect(cfg, p, nextResult(results, out))
 	sum.query = q
-	if cfg.size && len(found) > 0 && ctx.Err() == nil {
-		list := measure(ctx, found)
-		p.sizes(list)
-		sum.sized = true
-		sum.bytes, sum.files = totals(list)
+	if cfg.size && len(found) > 0 {
+		sum.sized, sum.bytes, sum.files = showSized(ctx, p, found)
 	}
 
 	sum.scanned = stats.Scanned()
@@ -244,6 +241,26 @@ func measure(ctx context.Context, found []search.Result) []sized {
 		return cmp.Compare(b.Bytes, a.Bytes)
 	})
 	return list
+}
+
+// showSized muestra al final las carpetas guardadas con --size, de mayor a
+// menor tamaño, y devuelve los totales. Si Ctrl+C llega antes de medirlas
+// todas, sus tamaños estarían incompletos: entonces las muestra sin tamaño, en
+// el orden en que aparecieron, y devuelve measured = false.
+func showSized(ctx context.Context, p *printer, found []search.Result) (measured bool, size, files int64) {
+	var list []sized
+	if ctx.Err() == nil {
+		list = measure(ctx, found)
+	}
+	if ctx.Err() != nil {
+		for i, r := range found {
+			p.match(int64(i+1), r)
+		}
+		return false, 0, 0
+	}
+	p.sizes(list)
+	size, files = totals(list)
+	return true, size, files
 }
 
 // totals suma el tamaño y el número de archivos de las carpetas de list.
