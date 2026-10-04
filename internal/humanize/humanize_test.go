@@ -1,6 +1,25 @@
 package humanize
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
+
+func TestIntExtremes(t *testing.T) {
+	tests := []struct {
+		n    int64
+		want string
+	}{
+		{math.MaxInt64, "9,223,372,036,854,775,807"},
+		// Cambiar el signo de MinInt64 desborda: no puede formatearse como -(-n).
+		{math.MinInt64, "-9,223,372,036,854,775,808"},
+	}
+	for _, tt := range tests {
+		if got := Int(tt.n); got != tt.want {
+			t.Errorf("Int(%d) = %q, want %q", tt.n, got, tt.want)
+		}
+	}
+}
 
 func TestInt(t *testing.T) {
 	tests := map[int64]string{0: "0", 7: "7", 999: "999", 1000: "1,000", 52341: "52,341", 1234567: "1,234,567", -4200: "-4,200"}

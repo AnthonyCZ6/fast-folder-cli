@@ -8,11 +8,14 @@ import (
 
 // Int formatea un entero con separador de miles: 52341 -> "52,341".
 func Int(n int64) string {
-	if n < 0 {
-		return "-" + Int(-n)
-	}
 	s := strconv.FormatInt(n, 10)
 	var b strings.Builder
+	if n < 0 {
+		// Se separa el signo de los dígitos en lugar de formatear -n, que
+		// desborda con math.MinInt64.
+		b.WriteByte('-')
+		s = s[1:]
+	}
 	for i, r := range s {
 		if i > 0 && (len(s)-i)%3 == 0 {
 			b.WriteByte(',')
