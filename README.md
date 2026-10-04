@@ -610,6 +610,7 @@ fast-folder-cli/
 │   ├── scripts/release-notes.sh   # Notas de versión a partir de los commits
 │   ├── ISSUE_TEMPLATE/            # Formularios para reportar errores y proponer mejoras
 │   └── dependabot.yml             # Actualizaciones semanales de módulos de Go y acciones
+├── e2e/                           # Pruebas de punta a punta: compilan el programa y lo ejecutan
 ├── installer/fast-folder-cli.iss  # Asistente de instalación (Inno Setup)
 ├── install.ps1                    # Instalador de un solo comando para Windows
 ├── shell/                         # Comando fcd para PowerShell (fcd.ps1) y cmd (fcd.cmd)
@@ -633,9 +634,10 @@ fast-folder-cli/
 ## 🧪 Desarrollo
 
 ```powershell
-go test ./...     # pruebas unitarias (incluye pruebas específicas de Windows: atributos y junctions)
-go vet ./...      # análisis estático
-gofmt -l .        # comprobar formato
+go test ./...         # todas las pruebas; las de e2e/ compilan el programa y lo ejecutan de punta a punta
+go test -short ./...  # sin las pruebas de punta a punta (más rápido)
+go vet ./...          # análisis estático
+gofmt -l .            # comprobar formato
 ```
 
 Para generar el asistente de instalación localmente, instala
