@@ -110,6 +110,14 @@ func addRecent(files []string) int {
 	return 0
 }
 
+func recentPaths(folders []recentJSON) []string {
+	var out []string
+	for _, f := range folders {
+		out = append(out, f.Path)
+	}
+	return out
+}
+
 // --recientes con el historial real de Windows: otro proceso registra dos
 // archivos como abiertos y el programa encuentra sus carpetas, la más
 // reciente primero, con las rutas exactas. Solo en el CI, porque escribe en el

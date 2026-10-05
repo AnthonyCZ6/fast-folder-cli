@@ -49,14 +49,6 @@ func recentFolders(t *testing.T, out string) []recentJSON {
 	return folders
 }
 
-func recentPaths(folders []recentJSON) []string {
-	var out []string
-	for _, f := range folders {
-		out = append(out, f.Path)
-	}
-	return out
-}
-
 // --recientes y --con con un historial sintético: las carpetas de lo que se
 // abrió, la más reciente primero, y solo las de Word con --con word.
 func TestRecent(t *testing.T) {
