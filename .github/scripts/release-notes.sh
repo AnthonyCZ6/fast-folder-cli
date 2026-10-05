@@ -8,6 +8,12 @@ set -euo pipefail
 
 tag="$1"
 repo_url="$2"
+# Una etiqueta (o una rama, para previsualizar) solo con letras, números,
+# puntos, guiones y barras.
+if [[ ! $tag =~ ^[A-Za-z0-9._/-]+$ ]]; then
+  echo "etiqueta no válida: $tag" >&2
+  exit 1
+fi
 module=$(awk '/^module /{print $2}' go.mod)
 # https://github.com/usuario/repo -> https://raw.githubusercontent.com/usuario/repo
 raw_url="https://raw.githubusercontent.com/${repo_url#https://github.com/}"
@@ -53,11 +59,8 @@ section "📚 Documentación" "$(type_re docs)"
 section "🔧 Mantenimiento" "$(type_re 'build|ci|chore|refactor|test|style|revert')"
 section "Otros cambios" -v -e "$(type_re "$types")" -e '^$'
 
-sed -e "s|{{TAG}}|$tag|g" \
-  -e "s|{{REPO_URL}}|$repo_url|g" \
-  -e "s|{{RAW_URL}}|$raw_url|g" \
-  -e "s|{{MODULE}}|$module|g" \
-  -e "s|{{CHANGES_URL}}|$changes_url|g" <<'EOF'
+template=$(
+  cat <<'EOF'
 ## 📥 Instalación
 
 **Asistente de instalación:** descarga
@@ -107,3 +110,14 @@ Get-FileHash .\fast-folder-cli-windows-amd64.exe
 
 **Cambios completos**: {{CHANGES_URL}}
 EOF
+)
+
+# Los valores se sustituyen con la expansión de bash y el reemplazo entre
+# comillas: ningún carácter de la etiqueta tiene significado especial (con sed,
+# un "|" en la etiqueta podía añadir órdenes).
+template=${template//"{{TAG}}"/"$tag"}
+template=${template//"{{REPO_URL}}"/"$repo_url"}
+template=${template//"{{RAW_URL}}"/"$raw_url"}
+template=${template//"{{MODULE}}"/"$module"}
+template=${template//"{{CHANGES_URL}}"/"$changes_url"}
+printf '%s\n' "$template"

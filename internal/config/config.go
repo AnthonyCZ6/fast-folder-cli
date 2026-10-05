@@ -122,10 +122,10 @@ var Template string
 // Create escribe la plantilla en path, creando su carpeta, si el archivo no
 // existe. Devuelve true si lo creó; un archivo que ya existe no se toca.
 func Create(path string) (bool, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return false, err
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, fs.ErrExist) {
 		return false, nil
 	}

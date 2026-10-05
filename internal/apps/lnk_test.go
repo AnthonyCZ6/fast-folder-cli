@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // lnkFile arma un acceso directo mínimo (formato MS-SHLLINK). Con base, lleva
@@ -108,6 +109,20 @@ func TestLnkTarget(t *testing.T) {
 			t.Errorf("%s: lnkTarget = %q, want %q", tt.name, got, tt.want)
 		}
 	}
+}
+
+// FuzzLnkTarget comprueba que ningún archivo, por dañado o malicioso que sea,
+// hace fallar a lnkTarget: o da una ruta en UTF-8 válido, o "".
+func FuzzLnkTarget(f *testing.F) {
+	f.Add(lnkFile(`C:\Program Files\Mí App\`, "app.exe", false, ""))
+	f.Add(lnkFile(`C:\Apps\日本\`, "app.exe", true, ""))
+	f.Add(lnkFile("", "", false, `%ProgramFiles%\Tool\tool.exe`))
+	f.Add([]byte("hola"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if got := lnkTarget(data); !utf8.ValidString(got) {
+			t.Errorf("lnkTarget devolvió UTF-8 no válido: %q", got)
+		}
+	})
 }
 
 // readShortcuts recorre las subcarpetas, ignora lo que no es .lnk y expande

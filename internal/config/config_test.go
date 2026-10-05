@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -123,6 +124,33 @@ func TestPath(t *testing.T) {
 	if err != nil || !strings.HasSuffix(got, filepath.Join("fast-folder-cli", "config.toml")) {
 		t.Errorf("Path = %q, %v; want …\\fast-folder-cli\\config.toml", got, err)
 	}
+}
+
+// FuzzLoadFile comprueba que ningún archivo hace fallar a LoadFile y que lo
+// que acepta cumple la validación: una terminal permitida y ubicaciones con
+// nombre y ruta.
+func FuzzLoadFile(f *testing.F) {
+	f.Add(Template)
+	f.Add("terminal = \"WT\"\n[[ubicaciones]]\nnombre = \"X\"\nruta = 'D:\\x'\n")
+	f.Add("excluir = [\"a\", \"b\"]\nrecientes = -3\n")
+	f.Add("ubicacion = 'sin cerrar\n")
+	f.Fuzz(func(t *testing.T, content string) {
+		c, err := LoadFile(writeConfig(t, content))
+		if err != nil {
+			return
+		}
+		if c.Terminal != "" && !slices.Contains(terminals, c.Terminal) {
+			t.Errorf("terminal aceptada sin validar: %q", c.Terminal)
+		}
+		for _, l := range c.Locations {
+			if strings.TrimSpace(l.Name) == "" || strings.TrimSpace(l.Path) == "" {
+				t.Errorf("ubicación aceptada sin nombre o ruta: %+v", l)
+			}
+		}
+		if c.RecentLimit() < 0 {
+			t.Errorf("RecentLimit negativo: %d", c.RecentLimit())
+		}
+	})
 }
 
 func TestRecentLimit(t *testing.T) {
