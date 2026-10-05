@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -110,10 +109,32 @@ func addRecent(files []string) int {
 	return 0
 }
 
-func recentPaths(folders []recentJSON) []string {
-	var out []string
+// sameDirs indica si got son las carpetas de want, en el mismo orden. Compara
+// con os.SameFile porque Windows puede guardar la ruta larga
+// (C:\Users\runneradmin\...) aunque se le diera la corta (C:\Users\RUNNER~1\...,
+// la de TEMP en los runners de GitHub).
+func sameDirs(got []recentJSON, want ...string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i, f := range got {
+		if sameDir(f.Path, want[i]) != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// within devuelve las carpetas de folders que son alguna de dirs.
+func within(folders []recentJSON, dirs ...string) []recentJSON {
+	var out []recentJSON
 	for _, f := range folders {
-		out = append(out, f.Path)
+		for _, d := range dirs {
+			if sameDir(f.Path, d) == nil {
+				out = append(out, f)
+				break
+			}
+		}
 	}
 	return out
 }
@@ -146,14 +167,18 @@ func TestRecentWithRealHistory(t *testing.T) {
 		t.Fatalf("no se pudieron registrar los archivos: %v\n%s", err, out)
 	}
 
-	// Windows escribe la jump list al terminar el proceso; puede tardar.
-	want := []string{cancion, tesis}
-	var got []recentJSON
+	// Windows escribe la jump list al terminar el proceso; puede tardar. Se
+	// busca en todo el historial (-a: la carpeta temporal está dentro de
+	// AppData, que es oculta) y se miran solo las carpetas de la prueba.
+	var all []recentJSON
 	for deadline := time.Now().Add(45 * time.Second); time.Now().Before(deadline); time.Sleep(time.Second) {
-		got = recentFolders(t, run(t, "--recientes", "--json", "-p", root).stdout)
-		if slices.Equal(recentPaths(got), want) {
+		all = recentFolders(t, run(t, "--recientes", "--json", "-a").stdout)
+		if sameDirs(within(all, tesis, cancion), cancion, tesis) {
 			return
 		}
 	}
-	t.Errorf("--recientes = %+v, want %q", got, want)
+	t.Errorf("--recientes -a no tiene %s ni %s, en ese orden; tiene %d carpetas:", cancion, tesis, len(all))
+	for _, f := range all[:min(len(all), 15)] {
+		t.Logf("  %s (%d archivos)", f.Path, f.Files)
+	}
 }
