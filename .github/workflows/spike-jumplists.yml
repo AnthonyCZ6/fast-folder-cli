@@ -41,6 +41,13 @@ jobs:
           Get-Process explorer -ErrorAction SilentlyContinue | Format-Table Id, SessionId -AutoSize
           [System.Environment]::OSVersion.VersionString
 
-      - name: Generar y leer
+      # Dos procesos: Windows guarda la jump list al terminar el que registra.
+      - name: Registrar archivos recientes
         working-directory: spike/jumplists
-        run: go run .
+        run: |
+          go build -o spike.exe .
+          ./spike.exe escribir
+
+      - name: Leer la jump list
+        working-directory: spike/jumplists
+        run: ./spike.exe leer

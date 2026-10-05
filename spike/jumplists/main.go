@@ -27,30 +27,48 @@ var (
 
 const sHARDPathW = 3
 
+// testFiles son los archivos que se registran como abiertos recientemente.
+var testFiles = []string{
+	`Música\Canción & co\letra.txt`,
+	`Universidad\Tesis final (2)\capítulo 1.docx`,
+	`proyectos\api\README.md`,
+	`proyectos\api\notas.txt`,
+	`Año 2024\Fotos\resumen.txt`,
+}
+
+// Se ejecuta dos veces: "escribir" registra los archivos y termina (Windows
+// guarda la jump list al terminar el proceso); "leer" la lee después.
 func main() {
-	if err := run(); err != nil {
+	var err error
+	switch mode := os.Args[len(os.Args)-1]; mode {
+	case "escribir":
+		err = write()
+	case "leer":
+		err = read()
+	default:
+		err = fmt.Errorf("uso: escribir | leer (recibido %q)", mode)
+	}
+	if err != nil {
 		fmt.Println("FALLO:", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func testPaths() []string {
+	root := filepath.Join(os.TempDir(), "jl-prueba")
+	var paths []string
+	for _, f := range testFiles {
+		paths = append(paths, filepath.Join(root, f))
+	}
+	return paths
+}
+
+func write() error {
 	p, _ := syscall.UTF16PtrFromString(appID)
 	if r, _, _ := setAppID.Call(uintptr(unsafe.Pointer(p))); r != 0 {
 		return fmt.Errorf("SetCurrentProcessExplicitAppUserModelID: 0x%X", r)
 	}
-
-	root := filepath.Join(os.TempDir(), "jl-prueba")
-	files := []string{
-		`Música\Canción & co\letra.txt`,
-		`Universidad\Tesis final (2)\capítulo 1.docx`,
-		`proyectos\api\README.md`,
-		`proyectos\api\notas.txt`,
-		`Año 2024\Fotos\resumen.txt`,
-	}
-	var want []string
-	for _, f := range files {
-		path := filepath.Join(root, f)
+	for _, path := range testPaths() {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return err
 		}
@@ -59,10 +77,15 @@ func run() error {
 		}
 		ptr, _ := syscall.UTF16PtrFromString(path)
 		addToRecentDocs.Call(sHARDPathW, uintptr(unsafe.Pointer(ptr)))
-		want = append(want, path)
 		time.Sleep(1100 * time.Millisecond) // fechas distintas para ver el orden
 	}
+	time.Sleep(5 * time.Second)
+	fmt.Printf("Registrados %d archivos con el AppID %s\n", len(testFiles), appID)
+	return nil
+}
 
+func read() error {
+	want := testPaths()
 	name := fmt.Sprintf("%x.automaticDestinations-ms", crc64AppID(appID))
 	list := filepath.Join(os.Getenv("APPDATA"), `Microsoft\Windows\Recent\AutomaticDestinations`, name)
 	fmt.Println("Jump list esperada:", list)
@@ -117,15 +140,40 @@ func run() error {
 		}
 	}
 	fmt.Println("CORRECTO: AppID, compound file y DestList coinciden con lo registrado.")
+	listDir(filepath.Dir(list))
 	return nil
 }
 
+// listDir muestra cada jump list de dir con sus primeras entradas.
 func listDir(dir string) {
 	entries, _ := os.ReadDir(dir)
 	fmt.Printf("Contenido de %s (%d archivos):\n", dir, len(entries))
 	for _, e := range entries {
 		info, _ := e.Info()
-		fmt.Printf("  %s %d\n", e.Name(), info.Size())
+		fmt.Printf("  %s %d B", e.Name(), info.Size())
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			fmt.Println(" error:", err)
+			continue
+		}
+		c, err := openCFB(data)
+		if err != nil {
+			fmt.Println(" error:", err)
+			continue
+		}
+		dl, err := c.stream("DestList")
+		if err != nil {
+			fmt.Printf(" sin DestList (%v); streams: %s\n", err, c.names())
+			continue
+		}
+		v, items, err := destList(dl)
+		fmt.Printf(" DestList v%d, %d elementos, %d bytes, error=%v\n", v, len(items), len(dl), err)
+		for i, it := range items {
+			if i == 5 {
+				break
+			}
+			fmt.Printf("      %s  %s\n", it.last.Format(time.RFC3339), it.path)
+		}
 	}
 }
 
