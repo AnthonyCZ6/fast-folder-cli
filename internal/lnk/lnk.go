@@ -1,79 +1,44 @@
-package apps
+// Package lnk lee accesos directos de Windows (.lnk, formato MS-SHLLINK): solo
+// lo que necesita fast-folder-cli, la ruta del destino. Los accesos directos
+// vienen de fuera (el menú Inicio, las jump lists), así que un archivo dañado
+// nunca hace fallar la lectura: como mucho no se obtiene nada.
+package lnk
 
 import (
 	"encoding/binary"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"strings"
 	"unicode/utf16"
-
-	"github.com/AnthonyCZ6/fast-folder-cli/internal/pathutil"
 )
-
-// Lectura de accesos directos (.lnk) del menú Inicio, para encontrar apps que
-// no se registran en Configuración → Aplicaciones (las portables, por
-// ejemplo). Solo se lee lo necesario del formato MS-SHLLINK: la ruta del
-// destino.
-
-// shortcut es un acceso directo: su nombre (sin .lnk) y su destino.
-type shortcut struct {
-	name   string
-	target string
-}
 
 // Constantes del formato MS-SHLLINK.
 const (
-	lnkHeaderSize     = 0x4C       // tamaño de ShellLinkHeader
-	lnkHasIDList      = 1 << 0     // LinkFlags: HasLinkTargetIDList
-	lnkHasLinkInfo    = 1 << 1     // LinkFlags: HasLinkInfo
-	lnkIsUnicode      = 1 << 7     // LinkFlags: IsUnicode (StringData en UTF-16)
-	lnkLocalBasePath  = 1          // LinkInfoFlags: VolumeIDAndLocalBasePath
-	lnkEnvBlock       = 0xA0000001 // firma de EnvironmentVariableDataBlock
-	lnkEnvBlockSize   = 0x314      // tamaño de EnvironmentVariableDataBlock
-	lnkStringDataBits = 5          // HasName, HasRelativePath, HasWorkingDir, HasArguments, HasIconLocation
-	maxLnkSize        = 1 << 16    // un .lnk real ocupa unos pocos KB
+	headerSize     = 0x4C       // tamaño de ShellLinkHeader
+	hasIDList      = 1 << 0     // LinkFlags: HasLinkTargetIDList
+	hasLinkInfo    = 1 << 1     // LinkFlags: HasLinkInfo
+	isUnicode      = 1 << 7     // LinkFlags: IsUnicode (StringData en UTF-16)
+	localBasePath  = 1          // LinkInfoFlags: VolumeIDAndLocalBasePath
+	envBlock       = 0xA0000001 // firma de EnvironmentVariableDataBlock
+	envBlockSize   = 0x314      // tamaño de EnvironmentVariableDataBlock
+	stringDataBits = 5          // HasName, HasRelativePath, HasWorkingDir, HasArguments, HasIconLocation
 )
 
-// readShortcuts lee los accesos directos que hay bajo dir y devuelve los que
-// apuntan a una ruta local, con las variables de entorno expandidas.
-func readShortcuts(dir string) []shortcut {
-	var links []shortcut
-	// Las carpetas que no se pueden leer se saltan: solo faltarán sus apps.
-	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.EqualFold(filepath.Ext(path), ".lnk") {
-			return nil
-		}
-		if info, err := d.Info(); err != nil || info.Size() > maxLnkSize {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		if target := lnkTarget(data); target != "" {
-			name := strings.TrimSpace(strings.TrimSuffix(d.Name(), filepath.Ext(d.Name())))
-			links = append(links, shortcut{name: name, target: pathutil.ExpandEnv(target)})
-		}
-		return nil
-	})
-	return links
-}
+// MaxSize es el tamaño máximo de un .lnk que vale la pena leer: uno real
+// ocupa unos pocos KB.
+const MaxSize = 1 << 16
 
-// lnkTarget devuelve la ruta a la que apunta un acceso directo: la ruta local
-// de LinkInfo o, si no la tiene, la del bloque de variables de entorno (sin
+// Target devuelve la ruta a la que apunta un acceso directo: la ruta local de
+// LinkInfo o, si no la tiene, la del bloque de variables de entorno (sin
 // expandir). Devuelve "" si no apunta a una ruta local (como los accesos
 // "anunciados" de los instaladores MSI) o si el archivo está dañado.
-func lnkTarget(data []byte) string {
-	if u32(data, 0) != lnkHeaderSize || len(data) < lnkHeaderSize {
+func Target(data []byte) string {
+	if u32(data, 0) != headerSize || len(data) < headerSize {
 		return ""
 	}
 	flags := u32(data, 20)
-	pos := lnkHeaderSize
-	if flags&lnkHasIDList != 0 {
+	pos := headerSize
+	if flags&hasIDList != 0 {
 		pos += 2 + int(u16(data, pos))
 	}
-	if flags&lnkHasLinkInfo != 0 {
+	if flags&hasLinkInfo != 0 {
 		size := int(u32(data, pos))
 		if size < 0x1C || pos+size > len(data) {
 			return ""
@@ -89,7 +54,7 @@ func lnkTarget(data []byte) string {
 // linkInfoPath devuelve LocalBasePath + CommonPathSuffix de una estructura
 // LinkInfo, en UTF-16 si la tiene y si no en ANSI.
 func linkInfoPath(info []byte) string {
-	if u32(info, 8)&lnkLocalBasePath == 0 {
+	if u32(info, 8)&localBasePath == 0 {
 		return ""
 	}
 	if u32(info, 4) >= 0x24 {
@@ -103,12 +68,12 @@ func linkInfoPath(info []byte) string {
 // skipStringData salta las cadenas de StringData que indican los flags y
 // devuelve dónde empieza ExtraData.
 func skipStringData(data []byte, pos int, flags uint32) int {
-	for bit := range lnkStringDataBits {
+	for bit := range stringDataBits {
 		if flags&(1<<(2+bit)) == 0 {
 			continue
 		}
 		n := int(u16(data, pos))
-		if flags&lnkIsUnicode != 0 {
+		if flags&isUnicode != 0 {
 			n *= 2
 		}
 		pos += 2 + n
@@ -124,7 +89,7 @@ func envBlockTarget(data []byte, pos int) string {
 		if size < 8 || pos+size > len(data) {
 			return ""
 		}
-		if u32(data, pos+4) == lnkEnvBlock && size >= lnkEnvBlockSize {
+		if u32(data, pos+4) == envBlock && size >= envBlockSize {
 			block := data[pos : pos+size]
 			if target := utf16z(block[:8+260+520], 8+260); target != "" {
 				return target
