@@ -14,6 +14,7 @@ import (
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/apps"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/config"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/recent"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
 
@@ -57,12 +58,15 @@ func send(m model, msgs ...tea.Msg) model {
 }
 
 // recorder registra las acciones ejecutadas sobre los resultados, como
-// "explorer:C:\ruta" o "show:C:\carpeta|C:\carpeta\app.exe", y hace que la
-// búsqueda de apps encuentre las de apps (o falle con appsErr).
+// "explorer:C:\ruta" o "show:C:\carpeta|C:\carpeta\app.exe", hace que la
+// búsqueda de apps encuentre las de apps (o falle con appsErr) y que el
+// historial de Windows sea history (o falle con historyErr).
 type recorder struct {
 	calls      []string
 	apps       []apps.App
 	appsErr    error
+	history    recent.History
+	historyErr error
 	remembered []string // carpetas guardadas entre las recientes
 }
 
@@ -91,6 +95,7 @@ func (r *recorder) actions() actions {
 			}
 			return found, r.appsErr
 		},
+		history:  func() (recent.History, error) { return r.history, r.historyErr },
 		remember: func(dir string) { r.remembered = append(r.remembered, dir) },
 	}
 }
@@ -243,7 +248,7 @@ func drain(t *testing.T, m model, cmd tea.Cmd) model {
 		switch msg := c().(type) {
 		case tea.BatchMsg:
 			queue = append(queue, msg...)
-		case resultsMsg, appsMsg:
+		case resultsMsg, appsMsg, recentMsg:
 			next, cmd := m.Update(msg)
 			m = next.(model)
 			queue = append(queue, cmd)

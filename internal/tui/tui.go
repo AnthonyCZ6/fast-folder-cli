@@ -16,6 +16,7 @@ import (
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/config"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/launch"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/recent"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/search"
 )
 
@@ -57,9 +58,10 @@ const (
 )
 
 // actions agrupa lo que se puede hacer con los resultados (abrir una carpeta,
-// copiar su ruta, abrir la ubicación de una app...) y la búsqueda de apps
-// instaladas. En las pruebas se reemplazan por funciones que solo registran
-// la llamada o devuelven una lista fija.
+// copiar su ruta, abrir la ubicación de una app...), la búsqueda de apps
+// instaladas y la lectura del historial de Windows. En las pruebas se
+// reemplazan por funciones que solo registran la llamada o devuelven datos
+// fijos.
 type actions struct {
 	explorer func(string) error
 	code     func(string) error
@@ -67,6 +69,7 @@ type actions struct {
 	copyPath func(string) error
 	showApp  func(dir, exe string) error
 	findApps func(match func(string) bool) ([]apps.App, error)
+	history  func() (recent.History, error)
 	remember func(dir string) // guarda una carpeta elegida entre las recientes
 }
 
@@ -85,6 +88,7 @@ func actionsFor(p config.Config) actions {
 		copyPath: launch.CopyPath,
 		showApp:  launch.ShowApp,
 		findApps: apps.Find,
+		history:  recent.Load,
 		remember: remember,
 	}
 }
@@ -118,6 +122,7 @@ type model struct {
 	root      string
 	results   []search.Result
 	appList   []apps.App // en una búsqueda de apps, la app de cada resultado
+	recents   recentView // en una búsqueda de recientes, lo que se muestra de cada resultado
 	cursor    int
 	offset    int
 	searching bool
@@ -237,6 +242,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case appsMsg:
 		if msg.gen == m.gen {
 			m.showApps(msg)
+		}
+		return m, nil
+
+	case recentMsg:
+		if msg.gen == m.gen {
+			m.showRecent(msg)
 		}
 		return m, nil
 

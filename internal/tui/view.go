@@ -44,8 +44,11 @@ func (m model) viewForm() string {
 	}
 	kind := kindOptions[m.kindIndex]
 	b.WriteString(m.optionRow(fieldKind, "Tipo", kind.label, kind.hint, valueW) + "\n")
-	date := m.dates[m.dateIndex].label
-	b.WriteString(m.optionRow(fieldDate, "Modificada", date, "fecha de modificación de la carpeta", valueW) + "\n")
+	date, dateLabel, dateHint := m.dates[m.dateIndex].label, "Modificada", "fecha de modificación de la carpeta"
+	if m.kind() == query.Recent {
+		dateLabel, dateHint = "Usada", "cuándo se abrió algo en ella por última vez"
+	}
+	b.WriteString(m.optionRow(fieldDate, dateLabel, date, dateHint, valueW) + "\n")
 	hidden := "No"
 	if m.hidden {
 		hidden = "Sí"
@@ -78,10 +81,14 @@ func (m model) valueWidth() int {
 
 // optionRow muestra un campo que se cambia con ←→: su valor y una sugerencia.
 // Un campo que no se aplica a lo que se busca (con Apps, todos salvo Buscar y
-// Tipo) se muestra atenuado.
+// Tipo; con Recientes, la ubicación) se muestra atenuado.
 func (m model) optionRow(f field, label, value, hint string, valueW int) string {
 	if !m.applies(f) {
-		row := fmt.Sprintf("%-11s", label) + selector(value, false, valueW) + "  no se aplica a las apps"
+		what := "las apps"
+		if m.kind() == query.Recent {
+			what = "las carpetas recientes"
+		}
+		row := fmt.Sprintf("%-11s", label) + selector(value, false, valueW) + "  no se aplica a " + what
 		return m.line("   " + styleDim.Render(row))
 	}
 	return m.line(m.formRow(f, label, selector(value, m.focus == f, valueW), hint))
@@ -129,6 +136,11 @@ func (m model) viewResults() string {
 			b.WriteString(m.resultLine(i, nameW) + "\n")
 			lines++
 		}
+		// El aviso de que no se guarda el historial, si cabe debajo.
+		if notice := m.historyNotice(); len(notice) > 0 && lines+1+len(notice) <= h {
+			b.WriteString("\n" + strings.Join(notice, "\n") + "\n")
+			lines += 1 + len(notice)
+		}
 	}
 	b.WriteString(strings.Repeat("\n", max(h-lines, 0)))
 
@@ -154,11 +166,19 @@ func (m model) viewResults() string {
 
 // resultsTitle describe en la cabecera qué se busca y dónde.
 func (m model) resultsTitle() string {
-	title := styleName.Render(capitalize(m.query.Describe()))
-	if m.query.Kind == query.Apps {
-		return title + " entre los programas instalados"
+	desc := capitalize(m.query.Describe())
+	if m.recents.label != "" {
+		desc += " (" + m.recents.label + ")"
 	}
-	title += " en " + m.root
+	title := styleName.Render(desc)
+	switch m.query.Kind {
+	case query.Apps:
+		return title + " entre los programas instalados"
+	case query.Recent:
+		title += " en el historial de Windows"
+	default:
+		title += " en " + m.root
+	}
 	if m.hidden {
 		title += styleDim.Render(" (con ocultas)")
 	}
@@ -178,16 +198,27 @@ func (m model) emptyLines() []string {
 		empty = "No se encontró ningún proyecto."
 	case query.Apps:
 		empty, hint = "No se encontró ninguna app con ese nombre.", "Pulsa ← para cambiar la búsqueda."
+	case query.Recent:
+		empty = "No se encontró ninguna carpeta reciente."
+		hint = "Pulsa ← para cambiar la búsqueda: prueba otro nombre, otra fecha o incluir las ocultas."
 	}
-	return []string{"   " + styleWarn.Render(empty), "   " + styleDim.Render(hint)}
+	lines := []string{"   " + styleWarn.Render(empty), "   " + styleDim.Render(hint)}
+	if notice := m.historyNotice(); len(notice) > 0 {
+		lines = append(append(lines, ""), notice...)
+	}
+	return lines
 }
+
+// minWhereWidth es el ancho que se reserva, como mínimo, para mostrar dónde
+// está cada resultado cuando su etiqueta es larga.
+const minWhereWidth = 15
 
 func (m model) resultLine(i, nameW int) string {
 	name, tag, where := m.resultParts(i)
 	name = ansi.Truncate(name, nameW, "...")
 	name += strings.Repeat(" ", max(nameW-ansi.StringWidth(name), 0))
 	if tag != "" {
-		tag += "  "
+		tag = ansi.Truncate(tag, max(m.width-nameW-6-minWhereWidth, 0), "...") + "  "
 	}
 	where = truncateLeft(where, m.width-nameW-6-ansi.StringWidth(tag))
 	if i == m.cursor {
@@ -201,15 +232,19 @@ func (m model) resultLine(i, nameW int) string {
 }
 
 // resultParts devuelve las columnas del resultado i: el nombre, la etiqueta
-// (el tipo de un proyecto) y dónde está. De una app se muestran su nombre y
-// su carpeta.
+// (el tipo de un proyecto, o cuándo se usó una carpeta reciente) y dónde
+// está. De una app se muestran su nombre y su carpeta.
 func (m model) resultParts(i int) (name, tag, where string) {
 	if i < len(m.appList) {
 		a := m.appList[i]
 		return a.Name, "", a.Dir
 	}
 	r := m.results[i]
-	return filepath.Base(r.Path), r.Project, filepath.Dir(r.Path)
+	tag = r.Project
+	if i < len(m.recents.tags) {
+		tag = m.recents.tags[i]
+	}
+	return filepath.Base(r.Path), tag, filepath.Dir(r.Path)
 }
 
 func (m model) statsLine() string {
@@ -219,7 +254,13 @@ func (m model) statsLine() string {
 		scanned, denied = m.stats.Scanned(), m.stats.Denied()
 	}
 	details := ""
-	if m.query.Kind != query.Apps { // las apps no se buscan recorriendo carpetas
+	switch m.query.Kind {
+	case query.Apps: // las apps no se buscan recorriendo carpetas
+	case query.Recent: // ni las recientes, que salen del historial
+		if !m.searching {
+			details = " · " + humanize.Count(int64(m.recents.lists), "lista de Windows", "listas de Windows")
+		}
+	default:
 		details = " · " + humanize.Int(scanned) + " analizadas"
 	}
 	if denied > 0 {

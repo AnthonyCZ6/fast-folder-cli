@@ -62,10 +62,15 @@ func (m model) startSearch() (tea.Model, tea.Cmd) {
 		return m.setFocus(fieldTerm)
 	}
 
-	if q.Kind == query.Apps {
+	switch q.Kind {
+	case query.Apps:
 		m.cancelSearch()
 		m = m.begin(q, "")
 		return m.withSpinner(findApps(m.gen, m.acts.findApps, q.Match))
+	case query.Recent:
+		m.cancelSearch()
+		m = m.begin(q, "")
+		return m.withSpinner(findRecent(m.gen, m.acts.history, m.recentOptions(q), ""))
 	}
 	if len(m.locations) == 0 {
 		m.formErr = "No hay ubicaciones disponibles para buscar."
@@ -90,7 +95,7 @@ func (m model) begin(q query.Query, root string) model {
 	m.pending, m.stats = nil, nil
 	m.query = q
 	m.root = root
-	m.results, m.appList = nil, nil
+	m.results, m.appList, m.recents = nil, nil, recentView{}
 	m.cursor, m.offset = 0, 0
 	m.searching = true
 	m.started = time.Now()

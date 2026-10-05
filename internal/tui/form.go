@@ -29,6 +29,7 @@ var kindOptions = []kindOption{
 	{"Carpetas", "cualquier carpeta cuyo nombre coincida", query.Folders},
 	{"Proyectos", "carpetas con .git, package.json, go.mod... (el nombre es opcional)", query.Projects},
 	{"Apps", "aplicaciones instaladas: Enter abre su ubicación (el nombre es opcional)", query.Apps},
+	{"Recientes", "carpetas de lo que abriste hace poco (el nombre es opcional)", query.Recent},
 }
 
 // dateOption es una opción del campo Fecha.
@@ -101,9 +102,16 @@ func (m model) kind() query.Kind {
 }
 
 // applies indica si el campo f se aplica a lo que se busca: las apps no se
-// buscan en una ubicación, ni por fecha, ni entre carpetas ocultas.
+// buscan en una ubicación, ni por fecha, ni entre carpetas ocultas, y las
+// carpetas recientes se buscan en todo el historial, no en una ubicación.
 func (m model) applies(f field) bool {
-	return m.kind() != query.Apps || f == fieldTerm || f == fieldKind
+	switch m.kind() {
+	case query.Apps:
+		return f == fieldTerm || f == fieldKind
+	case query.Recent:
+		return f != fieldLocation
+	}
+	return true
 }
 
 // nextField devuelve el campo al que lleva ↓ (step 1) o ↑ (step -1) desde el
