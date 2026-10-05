@@ -38,12 +38,12 @@ type entry struct {
 // finish), ordenada por nombre y sin repetidas. Descarta las entradas
 // ocultas, las que no tienen nombre y las que no tienen una carpeta que
 // exista.
-func build(entries []entry, appPaths []string, links []shortcut, match func(string) bool) []App {
+func build(entries []entry, appPaths []string, links []Shortcut, match func(string) bool) []App {
 	exes := existingExes(appPaths)
 	linked := existingLinks(links)
 	candidates := exes
 	for _, l := range linked {
-		candidates = append(candidates, l.target)
+		candidates = append(candidates, l.Target)
 	}
 	candidates = existingExes(candidates) // sin repetir
 
@@ -66,8 +66,8 @@ func build(entries []entry, appPaths []string, links []shortcut, match func(stri
 		}
 	}
 	for _, l := range linked {
-		if !used[pathKey(l.target)] {
-			add(App{Name: l.name, Dir: filepath.Dir(l.target), Exe: l.target})
+		if !used[pathKey(l.Target)] {
+			add(App{Name: l.Name, Dir: filepath.Dir(l.Target), Exe: l.Target})
 		}
 	}
 	list = append(list, fromAppPaths(exes, used)...)
@@ -76,16 +76,16 @@ func build(entries []entry, appPaths []string, links []shortcut, match func(stri
 
 // existingLinks deja los accesos directos que apuntan a un .exe que existe y
 // no es un desinstalador, sin repetir el destino.
-func existingLinks(links []shortcut) []shortcut {
+func existingLinks(links []Shortcut) []Shortcut {
 	seen := map[string]bool{}
-	var out []shortcut
+	var out []Shortcut
 	for _, l := range links {
-		exe := cleanPath(l.target)
+		exe := cleanPath(l.Target)
 		if seen[pathKey(exe)] || !isExe(exe) || isUninstaller(exe) || !isFile(exe) {
 			continue
 		}
 		seen[pathKey(exe)] = true
-		out = append(out, shortcut{name: l.name, target: exe})
+		out = append(out, Shortcut{Name: l.Name, Target: exe})
 	}
 	return out
 }

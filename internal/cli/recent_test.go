@@ -10,6 +10,7 @@ import (
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/jumplist"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/jumplist/jumplisttest"
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/query"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/recent"
 )
 
 // recentFixture crea un árbol con carpetas y archivos y una jump list que los
@@ -26,19 +27,30 @@ func recentFixture(t *testing.T, historyReason string) string {
 	at := func(rel string) string { return filepath.Join(root, filepath.FromSlash(rel)) }
 	now := time.Now()
 	dir := t.TempDir()
-	err := jumplisttest.Write(dir, jumplist.AppID("Microsoft.Office.WINWORD.EXE.15"), 6, []jumplisttest.Entry{
+	word, explorer := jumplist.AppID("Microsoft.Office.WINWORD.EXE.15"), jumplist.AppID("Microsoft.Windows.Explorer")
+	err := jumplisttest.Write(dir, word, 6, []jumplisttest.Entry{
 		{Path: at("Tesis/capítulo 2.docx"), LastUsed: now.Add(-10 * time.Minute)},
 		{Path: at("Tesis/capítulo 1.docx"), LastUsed: now.Add(-2 * time.Hour)},
 		{Path: at("Música/Canción & co/letra.txt"), LastUsed: now.Add(-30 * time.Minute)},
-		{Path: at("Viejo"), LastUsed: now.AddDate(0, 0, -40)},
 	})
+	if err == nil {
+		err = jumplisttest.Write(dir, explorer, 6, []jumplisttest.Entry{
+			{Path: at("Viejo"), LastUsed: now.AddDate(0, 0, -40)},
+		})
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(jumplist.EnvDir, dir)
-	prev := historyOff
+	prevOff, prevNames := historyOff, appNames
 	historyOff = func() string { return historyReason }
-	t.Cleanup(func() { historyOff = prev })
+	appNames = func() map[uint64]recent.AppName {
+		return map[uint64]recent.AppName{
+			word:     {Name: "Word", Aliases: []string{"WINWORD"}},
+			explorer: {Name: "Explorador de archivos"},
+		}
+	}
+	t.Cleanup(func() { historyOff, appNames = prevOff, prevNames })
 	return root
 }
 
@@ -62,10 +74,38 @@ func TestRunRecent(t *testing.T) {
 	}
 	wantContains(t, out,
 		"Buscando carpetas recientes en el historial de Windows dentro de "+root,
-		"(hace 10 min · 2 archivos)",
+		"(hace 10 min · 2 archivos · Word)",
+		"(hace 30 min · 1 archivo · Word)",
+		"· Explorador de archivos)",
 		"Resultados : 3 carpetas encontradas",
-		"Historial  : 1 lista de Windows",
+		"Historial  : 2 listas de Windows",
 	)
+}
+
+// --con deja solo lo abierto con ese programa, por su nombre o su alias.
+func TestRunRecentWith(t *testing.T) {
+	root := recentFixture(t, "")
+	for _, app := range []string{"word", "WINWORD", "wór"} {
+		out := runOK(t, "--con", app, "-p", root)
+		if strings.Contains(out, filepath.Join(root, "Viejo")) {
+			t.Errorf("--con %s no debería mostrar lo abierto con el Explorador:\n%s", app, out)
+		}
+		wantContains(t, out, "Buscando carpetas recientes (Word)", "Resultados : 2 carpetas encontradas")
+	}
+
+	objs := jsonLines(t, runOK(t, "--con", "explorador", "--json", "-p", root))
+	if len(objs) != 1 || objs[0]["name"] != "Viejo" {
+		t.Fatalf("JSON = %v", objs)
+	}
+	if apps, _ := objs[0]["apps"].([]any); len(apps) != 1 || apps[0] != "Explorador de archivos" {
+		t.Errorf("apps = %v", objs[0]["apps"])
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"--con", "excel", "-p", root}, &stdout, &stderr, "test"); code != exitUsage {
+		t.Errorf("--con excel: código %d, want %d", code, exitUsage)
+	}
+	wantContains(t, stderr.String(), `no se reconoce el programa "excel". Tienen historial: Explorador de archivos, Word`)
 }
 
 func TestRunRecentFilters(t *testing.T) {
@@ -138,10 +178,16 @@ func TestParseArgsRecent(t *testing.T) {
 	if err != nil || !cfg.recent || cfg.term != "tesis" || cfg.kind() != query.Recent {
 		t.Errorf("parseArgs = %+v, %v", cfg, err)
 	}
+	cfg, err = parseArgs([]string{"--con", "word"})
+	if err != nil || cfg.with != "word" || cfg.kind() != query.Recent {
+		t.Errorf("--con sin --recientes: %+v, %v", cfg, err)
+	}
 	for _, args := range [][]string{
 		{"--recientes", "--apps"},
 		{"--recientes", "--projects"},
 		{"--recientes", "--size"},
+		{"--con", "word", "--apps"},
+		{"--con"},
 	} {
 		if _, err := parseArgs(args); err == nil {
 			t.Errorf("parseArgs(%q) no devolvió error", args)

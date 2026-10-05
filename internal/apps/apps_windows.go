@@ -46,9 +46,16 @@ func Find(match func(string) bool) ([]App, error) {
 // para todos los usuarios y para el actual.
 var startMenuFolders = []*windows.KNOWNFOLDERID{windows.FOLDERID_CommonPrograms, windows.FOLDERID_Programs}
 
+// StartMenu devuelve los accesos directos (.lnk) del menú Inicio, de todos
+// los usuarios y del actual, que apuntan a una ruta local o tienen un
+// AppUserModelID.
+func StartMenu() []Shortcut {
+	return readStartMenu()
+}
+
 // readStartMenu lee los accesos directos (.lnk) del menú Inicio.
-func readStartMenu() []shortcut {
-	var links []shortcut
+func readStartMenu() []Shortcut {
+	var links []Shortcut
 	for _, id := range startMenuFolders {
 		if dir, err := windows.KnownFolderPath(id, 0); err == nil {
 			links = append(links, readShortcuts(dir)...)

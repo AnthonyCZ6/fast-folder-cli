@@ -70,7 +70,8 @@ type config struct {
 	modified string
 	projects bool
 	apps     bool
-	recent   bool // --recientes: carpetas usadas hace poco
+	recent   bool   // --recientes: carpetas usadas hace poco
+	with     string // --con: solo las de lo abierto con este programa (implica --recientes)
 	size     bool
 	cdFile   string
 	exclude  []string // carpetas excluidas: las de --exclude y las del archivo
@@ -131,7 +132,7 @@ func (cfg config) kind() query.Kind {
 	switch {
 	case cfg.apps:
 		return query.Apps
-	case cfg.recent:
+	case cfg.recent || cfg.with != "":
 		return query.Recent
 	case cfg.projects:
 		return query.Projects
@@ -150,14 +151,18 @@ func (cfg config) checkKinds() error {
 // checkRecent rechaza las opciones que no tienen sentido con --recientes,
 // que no recorre carpetas sino el historial de Windows.
 func (cfg config) checkRecent() error {
-	if !cfg.recent {
+	if !cfg.recent && cfg.with == "" {
 		return nil
+	}
+	flag := "--recientes"
+	if !cfg.recent {
+		flag = "--con"
 	}
 	switch {
 	case cfg.apps:
-		return errors.New("--recientes y --apps no se pueden usar juntas")
+		return errors.New(flag + " y --apps no se pueden usar juntas")
 	case cfg.projects:
-		return errors.New("--recientes y --projects no se pueden usar juntas")
+		return errors.New(flag + " y --projects no se pueden usar juntas")
 	case cfg.size:
 		return errors.New("--size no se aplica a las carpetas recientes")
 	}
@@ -508,6 +513,7 @@ func parseArgs(args []string) (config, error) {
 	fs.BoolVar(&cfg.projects, "projects", false, "")
 	fs.BoolVar(&cfg.apps, "apps", false, "")
 	fs.BoolVar(&cfg.recent, "recientes", false, "")
+	fs.StringVar(&cfg.with, "con", "", "")
 	fs.BoolVar(&cfg.size, "s", false, "")
 	fs.BoolVar(&cfg.size, "size", false, "")
 	fs.StringVar(&cfg.cdFile, "cd-file", "", "")
@@ -598,7 +604,7 @@ Uso:
   fast-folder-cli -n <término> [-p <ruta>] [opciones]
   fast-folder-cli <término> [opciones]
   fast-folder-cli --projects [término] [opciones]
-  fast-folder-cli --recientes [término] [opciones]
+  fast-folder-cli --recientes [término] [--con <programa>] [opciones]
   fast-folder-cli --apps [término] [-o]
 
 Si lo instalaste con el asistente o el script, también puedes escribir "fast",
@@ -621,6 +627,9 @@ Opciones:
                             según el historial de Windows), de la usada más
                             recientemente a la más antigua. Con -m, por cuándo
                             las usaste; con -p, solo dentro de esa carpeta.
+      --con <programa>      Solo las carpetas de lo que abriste con ese
+                            programa: word, excel, code, fotos... (implica
+                            --recientes).
       --apps                Busca aplicaciones instaladas por su nombre (las de
                             Configuración → Aplicaciones). Con -o abre su
                             ubicación con el ejecutable seleccionado.
@@ -646,6 +655,7 @@ Ejemplos:
   fast-folder-cli -m ayer -p %USERPROFILE%\Documents
   fast-folder-cli node_modules --size -p C:\dev
   fast-folder-cli --recientes -m ayer
+  fast-folder-cli --con word -m semana
   fast-folder-cli --apps chrome -o
 
 Códigos de salida: 0 = hay resultados, 1 = sin resultados, 2 = error de uso,

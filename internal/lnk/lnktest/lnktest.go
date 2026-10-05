@@ -18,8 +18,9 @@ const (
 
 // File arma un acceso directo. Con base, lleva un LinkInfo que apunta a
 // base+suffix (en ANSI y, si unicode, también en UTF-16). Con env, un bloque
-// de variables de entorno que apunta a env.
-func File(base, suffix string, unicode bool, env string) []byte {
+// de variables de entorno que apunta a env. blocks se añaden al final de
+// ExtraData (por ejemplo, AppIDBlock).
+func File(base, suffix string, unicode bool, env string, blocks ...[]byte) []byte {
 	var flags uint32 = isUnicode
 	if base != "" {
 		flags |= hasLinkInfo
@@ -38,7 +39,46 @@ func File(base, suffix string, unicode bool, env string) []byte {
 		copy(block[8+260:], utf16z(env))
 		b = append(b, block...)
 	}
+	for _, block := range blocks {
+		b = append(b, block...)
+	}
 	return binary.LittleEndian.AppendUint32(b, 0) // TerminalBlock
+}
+
+// AppIDBlock arma un PropertyStoreDataBlock con la propiedad
+// System.AppUserModel.ID igual a aumid, como el de los accesos directos de
+// Office o VS Code. Antes lleva otro storage (System.Link.TargetParsingPath)
+// para comprobar que el lector lo salta.
+func AppIDBlock(aumid string) []byte {
+	other := storage([16]byte{0xB9, 0xB4, 0xB3, 0xB4, 0x75, 0x31, 0x9E, 0x4D, 0x8D, 0xC5, 0x8D, 0x10, 0x9F, 0xE8, 0x2E, 0xBA}, 2, `C:\otro.exe`)
+	appID := storage([16]byte{0x55, 0x28, 0x4C, 0x9F, 0x79, 0x9F, 0x39, 0x4B, 0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}, 5, aumid)
+	store := append(append(other, appID...), 0, 0, 0, 0) // un storage de tamaño 0 cierra la lista
+	block := binary.LittleEndian.AppendUint32(nil, uint32(8+len(store)))
+	block = binary.LittleEndian.AppendUint32(block, 0xA0000009)
+	return append(block, store...)
+}
+
+// storage arma una serialized property storage con un único valor de texto
+// (VT_LPWSTR) con el identificador id.
+func storage(fmtid [16]byte, id uint32, value string) []byte {
+	text := utf16z(value)
+	v := binary.LittleEndian.AppendUint32(nil, 0) // tamaño, se rellena después
+	v = binary.LittleEndian.AppendUint32(v, id)
+	v = append(v, 0)                              // reservado
+	v = binary.LittleEndian.AppendUint16(v, 0x1F) // VT_LPWSTR
+	v = binary.LittleEndian.AppendUint16(v, 0)    // relleno
+	v = binary.LittleEndian.AppendUint32(v, uint32(len(text)/2))
+	v = append(v, text...)
+	for len(v)%4 != 0 {
+		v = append(v, 0)
+	}
+	binary.LittleEndian.PutUint32(v, uint32(len(v)))
+	values := append(v, 0, 0, 0, 0) // un valor de tamaño 0 cierra la lista
+
+	s := binary.LittleEndian.AppendUint32(nil, uint32(24+len(values)))
+	s = binary.LittleEndian.AppendUint32(s, 0x53505331) // "1SPS"
+	s = append(s, fmtid[:]...)
+	return append(s, values...)
 }
 
 func linkInfo(base, suffix string, unicode bool) []byte {

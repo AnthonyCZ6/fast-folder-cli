@@ -51,6 +51,90 @@ func Target(data []byte) string {
 	return envBlockTarget(data, skipStringData(data, pos, flags))
 }
 
+// Bloque de propiedades (PropertyStoreDataBlock, MS-SHLLINK 2.5.7) y la
+// propiedad System.AppUserModel.ID (formato MS-PROPSTORE).
+const (
+	propStoreBlock = 0xA0000009
+	propStoreSPS1  = 0x53505331 // versión de una serialized property storage
+	vtLPWSTR       = 0x1F
+	appIDPropID    = 5
+	maxAppIDChars  = 260
+)
+
+// appIDFormat es el FMTID de System.AppUserModel.ID,
+// {9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}, tal como se guarda en el archivo.
+var appIDFormat = [16]byte{0x55, 0x28, 0x4C, 0x9F, 0x79, 0x9F, 0x39, 0x4B, 0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}
+
+// AppUserModelID devuelve el identificador de aplicación (AppUserModelID)
+// que guarda un acceso directo, como "Microsoft.Office.WINWORD.EXE.15" en el
+// de Word. Es el que usa Windows para agrupar las ventanas y nombrar las jump
+// lists de ese programa. Devuelve "" si no lo tiene o si el archivo está
+// dañado.
+func AppUserModelID(data []byte) string {
+	if u32(data, 0) != headerSize || len(data) < headerSize {
+		return ""
+	}
+	flags := u32(data, 20)
+	pos := headerSize
+	if flags&hasIDList != 0 {
+		pos += 2 + int(u16(data, pos))
+	}
+	if flags&hasLinkInfo != 0 {
+		pos += int(u32(data, pos))
+	}
+	for pos = skipStringData(data, pos, flags); pos+8 <= len(data); {
+		size := int(u32(data, pos))
+		if size < 8 || pos+size > len(data) {
+			return ""
+		}
+		if u32(data, pos+4) == propStoreBlock {
+			if id := propStoreAppID(data[pos+8 : pos+size]); id != "" {
+				return id
+			}
+		}
+		pos += size
+	}
+	return ""
+}
+
+// propStoreAppID busca System.AppUserModel.ID en un property store: una
+// serie de storages (tamaño, "1SPS", FMTID y valores) que acaba en un tamaño 0.
+func propStoreAppID(store []byte) string {
+	for pos := 0; pos+24 <= len(store); {
+		size := int(u32(store, pos))
+		if size < 24 || pos+size > len(store) {
+			return ""
+		}
+		storage := store[pos : pos+size]
+		if u32(storage, 4) == propStoreSPS1 && [16]byte(storage[8:24]) == appIDFormat {
+			return storageAppID(storage[24:])
+		}
+		pos += size
+	}
+	return ""
+}
+
+// storageAppID busca el valor con el identificador 5 (de tipo VT_LPWSTR)
+// entre los valores de un storage con nombres numéricos.
+func storageAppID(values []byte) string {
+	for pos := 0; pos+13 <= len(values); {
+		size := int(u32(values, pos))
+		if size < 13 || pos+size > len(values) {
+			return ""
+		}
+		v := values[pos : pos+size]
+		if u32(v, 4) == appIDPropID && u16(v, 9) == vtLPWSTR {
+			chars := int(u32(v, 13))
+			if chars <= 0 || chars > maxAppIDChars || 17+2*chars > len(v) {
+				return ""
+			}
+			return utf16z(v[:17+2*chars], 17)
+		}
+		pos += size
+	}
+	return ""
+}
+
 // linkInfoPath devuelve LocalBasePath + CommonPathSuffix de una estructura
 // LinkInfo, en UTF-16 si la tiene y si no en ANSI.
 func linkInfoPath(info []byte) string {

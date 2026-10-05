@@ -22,6 +22,7 @@ func TestReadShortcuts(t *testing.T) {
 		"Carpeta/Office.lnk": lnktest.File("", "", false, ""),
 		"Carpeta/dañado.lnk": []byte("dañado"),
 		"Carpeta/Otra/X.LNK": lnktest.File(`D:\x\`, "x.exe", true, ""),
+		"Word.lnk":           lnktest.File("", "", false, "", lnktest.AppIDBlock("Microsoft.Office.WINWORD.EXE.15")), // anunciado: sin destino
 	}
 	for name, data := range files {
 		path := filepath.Join(dir, filepath.FromSlash(name))
@@ -33,11 +34,12 @@ func TestReadShortcuts(t *testing.T) {
 		}
 	}
 	got := readShortcuts(dir)
-	slices.SortFunc(got, func(a, b shortcut) int { return strings.Compare(a.name, b.name) })
-	want := []shortcut{
-		{"Editor", `C:\Editor\editor.exe`},
-		{"Tool", `C:\Herramientas\tool.exe`},
-		{"X", `D:\x\x.exe`},
+	slices.SortFunc(got, func(a, b Shortcut) int { return strings.Compare(a.Name, b.Name) })
+	want := []Shortcut{
+		{Name: "Editor", Target: `C:\Editor\editor.exe`},
+		{Name: "Tool", Target: `C:\Herramientas\tool.exe`},
+		{Name: "Word", AppUserModelID: "Microsoft.Office.WINWORD.EXE.15"},
+		{Name: "X", Target: `D:\x\x.exe`},
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("readShortcuts =\n%+v\nwant\n%+v", got, want)
@@ -54,12 +56,13 @@ func TestBuildWithShortcuts(t *testing.T) {
 		{name: "Google Chrome", displayIcon: at("Chrome/chrome.exe")},
 		{name: "Editor", installLocation: at("Editor")},
 	}
-	links := []shortcut{
-		{"Mi Portable", at("Portable/portable.exe")},
-		{"Chrome", at("Chrome/chrome.exe")},       // ya es de Google Chrome
-		{"Editor", at("Editor/editor.exe")},       // lo adopta la app Editor
-		{"Desinstalar", at("Juego/unins000.exe")}, // un desinstalador no es una app
-		{"Borrado", at("NoExiste/x.exe")},
+	links := []Shortcut{
+		{Name: "Mi Portable", Target: at("Portable/portable.exe")},
+		{Name: "Chrome", Target: at("Chrome/chrome.exe")},                 // ya es de Google Chrome
+		{Name: "Editor", Target: at("Editor/editor.exe")},                 // lo adopta la app Editor
+		{Name: "Desinstalar", Target: at("Juego/unins000.exe")},           // un desinstalador no es una app
+		{Name: "Borrado", Target: at("NoExiste/x.exe")},                   // ya no existe
+		{Name: "Word", AppUserModelID: "Microsoft.Office.WINWORD.EXE.15"}, // sin destino: no añade nada
 	}
 	want := []App{
 		{Name: "Editor", Dir: at("Editor"), Exe: at("Editor/editor.exe")},
@@ -77,7 +80,7 @@ func TestBuildPrefersAppPaths(t *testing.T) {
 	base := makeFiles(t, "7-Zip/7zFM.exe", "7-Zip/7zG.exe")
 	at := func(rel string) string { return filepath.Join(base, filepath.FromSlash(rel)) }
 	entries := []entry{{name: "7-Zip", installLocation: at("7-Zip")}}
-	links := []shortcut{{"7-Zip GUI", at("7-Zip/7zG.exe")}}
+	links := []Shortcut{{Name: "7-Zip GUI", Target: at("7-Zip/7zG.exe")}}
 	want := []App{
 		{Name: "7-Zip", Dir: at("7-Zip"), Exe: at("7-Zip/7zFM.exe")},
 		{Name: "7-Zip GUI", Dir: at("7-Zip"), Exe: at("7-Zip/7zG.exe")},
