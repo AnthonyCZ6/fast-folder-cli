@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf16"
 
 	"github.com/AnthonyCZ6/fast-folder-cli/internal/jumplist/jumplisttest"
 )
@@ -106,14 +107,35 @@ func TestParseDestListErrors(t *testing.T) {
 		"demasiado corto":      {1, 2, 3},
 		"versión de Windows 7": header(1, 0),
 		"demasiadas entradas":  header(4, 0xFFFF),
-		"entrada recortada":    append(header(4, 1), make([]byte, 50)...),
 	}
-	long := append(header(4, 1), make([]byte, destFixedSize)...)
-	long[destHeaderSize+128] = 200 // 200 caracteres que no están
-	tests["ruta recortada"] = long
 	for name, b := range tests {
 		if _, err := parseDestList(b); err == nil {
 			t.Errorf("%s: parseDestList no devolvió error", name)
+		}
+	}
+}
+
+// Una entrada recortada (por ejemplo, de una lista que Windows está
+// escribiendo) termina la lista, sin perder las entradas completas
+// anteriores.
+func TestParseDestListTruncated(t *testing.T) {
+	c, err := openCFB(jumplisttest.File(6, entriesAt(3)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dl, err := c.stream("DestList")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := toEntries(entriesAt(3))
+	lastPath := 2 * len(utf16.Encode([]rune(want[2].Path))) // bytes de la última ruta
+	for name, cut := range map[string]int{
+		"ruta recortada":    len(dl) - 10,
+		"entrada recortada": len(dl) - 4 - lastPath - destFixedSize/2,
+	} {
+		got, err := parseDestList(dl[:cut])
+		if err != nil || !reflect.DeepEqual(got, want[:2]) {
+			t.Errorf("%s: parseDestList = %+v, %v; want las 2 primeras", name, got, err)
 		}
 	}
 }

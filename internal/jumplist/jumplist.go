@@ -100,7 +100,9 @@ const (
 	filetimeEpoch  = 116444736000000000
 )
 
-// parseDestList lee las entradas de un stream DestList.
+// parseDestList lee las entradas de un stream DestList. Una entrada recortada
+// (por ejemplo, de una lista que Windows está escribiendo) termina la lista:
+// se devuelven las completas anteriores.
 func parseDestList(b []byte) ([]Entry, error) {
 	if len(b) < destHeaderSize {
 		return nil, errors.New("DestList demasiado corto")
@@ -115,11 +117,11 @@ func parseDestList(b []byte) ([]Entry, error) {
 	entries := make([]Entry, 0, n)
 	for i, o := uint32(0), destHeaderSize; i < n; i++ {
 		if o+destFixedSize > len(b) {
-			return nil, fmt.Errorf("DestList: la entrada %d está recortada", i)
+			break
 		}
 		end := o + destFixedSize + 2*int(le16(b, o+128))
 		if end > len(b) {
-			return nil, fmt.Errorf("DestList: la ruta %d está recortada", i)
+			break
 		}
 		units := make([]uint16, 0, (end-o-destFixedSize)/2)
 		for j := o + destFixedSize; j < end; j += 2 {
@@ -202,14 +204,15 @@ func Dir() (string, error) {
 // LocalPath devuelve la ruta local de la entrada: la propia ruta, o la de la
 // carpeta conocida si es knownfolder:{GUID}. Devuelve "" si no es una ruta
 // local: una URL, un elemento del Panel de control, una carpeta conocida que
-// este equipo no tiene o una ruta de red (\\servidor\...), porque comprobar
-// si existe podría bloquear la búsqueda o conectarse a ese servidor.
+// este equipo no tiene o una ruta de red (\\servidor\... o una unidad de red
+// como Z:), porque comprobar si existe podría bloquear la búsqueda o
+// conectarse a ese servidor.
 func (e Entry) LocalPath() string {
 	if guid, ok := strings.CutPrefix(e.Path, "knownfolder:"); ok {
 		return knownFolder(guid)
 	}
 	p := e.Path
-	if strings.Contains(p, "://") || strings.HasPrefix(p, `\\`) || strings.HasPrefix(p, "//") || !filepath.IsAbs(p) {
+	if strings.Contains(p, "://") || strings.HasPrefix(p, `\\`) || strings.HasPrefix(p, "//") || !filepath.IsAbs(p) || remoteDrive(p) {
 		return ""
 	}
 	return p

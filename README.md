@@ -510,7 +510,9 @@ Buscando carpetas recientes en el historial de Windows (ocultas/sistema: excluid
   `last_used`, `files` y `apps`) y con `-o` (abre la más reciente).
 - `fcd --recientes` y `fcd --con code` te dejan en la carpeta elegida.
 - Solo aparecen carpetas que siguen existiendo, en este equipo: las URL y las rutas de red
-  (`\\servidor\...`) se ignoran. Las carpetas ocultas (como AppData) solo salen con `-a`.
+  (`\\servidor\...` y las unidades de red, como `Z:`) se ignoran, porque comprobarlas podría
+  dejar la búsqueda esperando a un servidor. Las carpetas ocultas (como AppData) solo salen
+  con `-a`.
 
 **De dónde sale.** Windows anota lo que abres en sus *jump lists*: las listas de
 **Recientes** del Explorador y las que aparecen al hacer clic derecho en un programa de la

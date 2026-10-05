@@ -10,16 +10,18 @@ import (
 // Lector mínimo de compound files (formato OLE/CFB, MS-CFB), el contenedor
 // de las jump lists: solo lo necesario para leer un stream por su nombre. El
 // archivo viene de fuera, así que nada de lo que contenga puede hacer que se
-// lea fuera de él ni que se reserve más memoria que su propio tamaño.
+// lea fuera de él ni que se reserve más memoria que su propio tamaño: cada
+// sector se usa como mucho una vez en la FAT y en cada cadena.
 
 const (
-	cfbSignature = 0xE11AB1A1E011CFD0
-	endOfChain   = 0xFFFFFFFE
-	freeSect     = 0xFFFFFFFF
-	headerDIFAT  = 109 // entradas de la DIFAT que caben en la cabecera
-	dirEntrySize = 128
-	kindStream   = 2
-	kindRoot     = 5
+	cfbSignature     = 0xE11AB1A1E011CFD0
+	endOfChain       = 0xFFFFFFFE
+	freeSect         = 0xFFFFFFFF
+	headerDIFAT      = 109  // entradas de la DIFAT que caben en la cabecera
+	miniStreamCutoff = 4096 // los streams más pequeños están en el mini stream
+	dirEntrySize     = 128
+	kindStream       = 2
+	kindRoot         = 5
 )
 
 var errNotCFB = errors.New("no es un compound file")
@@ -29,7 +31,6 @@ type cfb struct {
 	data       []byte
 	sectorSize int
 	miniSize   int
-	cutoff     uint64 // los streams más pequeños están en el mini stream
 	fat        []uint32
 	miniFat    []uint32
 	ministream []byte
@@ -49,10 +50,7 @@ func openCFB(data []byte) (*cfb, error) {
 	if len(data) < 512 || binary.LittleEndian.Uint64(data) != cfbSignature {
 		return nil, errNotCFB
 	}
-	c := &cfb{
-		data:   data,
-		cutoff: uint64(le32(data, 0x38)),
-	}
+	c := &cfb{data: data}
 	switch shift := le16(data, 0x1E); shift {
 	case 9, 12: // 512 o 4096 bytes
 		c.sectorSize = 1 << shift
@@ -63,6 +61,9 @@ func openCFB(data []byte) (*cfb, error) {
 		return nil, fmt.Errorf("tamaño de mini sector no válido (2^%d)", shift)
 	}
 	c.miniSize = 64
+	if cutoff := le32(data, 0x38); cutoff != miniStreamCutoff {
+		return nil, fmt.Errorf("corte del mini stream no válido (%d)", cutoff)
+	}
 	if err := c.readFAT(); err != nil {
 		return nil, err
 	}
@@ -76,12 +77,30 @@ func openCFB(data []byte) (*cfb, error) {
 }
 
 // readFAT junta los sectores de la FAT: los que nombra la cabecera y los de
-// la cadena DIFAT.
+// la cadena DIFAT. Cada uno debe estar dentro del archivo y aparecer una sola
+// vez; si no, un archivo pequeño que repitiera un sector miles de veces haría
+// reservar varios GB.
 func (c *cfb) readFAT() error {
-	var sectors []uint32
+	var sectors [][]byte
+	listed := map[uint32]bool{}
+	add := func(s uint32) error {
+		if s == freeSect {
+			return nil
+		}
+		if listed[s] {
+			return fmt.Errorf("FAT: el sector %d se repite", s)
+		}
+		b, err := c.sector(s)
+		if err != nil {
+			return fmt.Errorf("FAT: %w", err)
+		}
+		listed[s] = true
+		sectors = append(sectors, b)
+		return nil
+	}
 	for i := range headerDIFAT {
-		if s := le32(c.data, 0x4C+4*i); s != freeSect {
-			sectors = append(sectors, s)
+		if err := add(le32(c.data, 0x4C+4*i)); err != nil {
+			return err
 		}
 	}
 	perSector := c.sectorSize/4 - 1 // el último valor enlaza el siguiente sector DIFAT
@@ -96,17 +115,14 @@ func (c *cfb) readFAT() error {
 			return fmt.Errorf("DIFAT: %w", err)
 		}
 		for i := range perSector {
-			if s := le32(b, 4*i); s != freeSect {
-				sectors = append(sectors, s)
+			if err := add(le32(b, 4*i)); err != nil {
+				return err
 			}
 		}
 		d = le32(b, c.sectorSize-4)
 	}
-	for _, s := range sectors {
-		b, err := c.sector(s)
-		if err != nil {
-			return fmt.Errorf("FAT: %w", err)
-		}
+	c.fat = make([]uint32, 0, len(sectors)*c.sectorSize/4)
+	for _, b := range sectors {
 		for i := 0; i < c.sectorSize; i += 4 {
 			c.fat = append(c.fat, le32(b, i))
 		}
@@ -176,7 +192,7 @@ func (c *cfb) stream(name string) ([]byte, error) {
 		}
 		var b []byte
 		var err error
-		if e.size < c.cutoff {
+		if e.size < miniStreamCutoff {
 			b, err = c.chain(e.start, c.miniFat, c.miniSector)
 		} else {
 			b, err = c.chain(e.start, c.fat, c.sector)

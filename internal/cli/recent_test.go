@@ -190,6 +190,8 @@ func TestParseArgsRecent(t *testing.T) {
 		{"--recientes", "--size"},
 		{"--con", "word", "--apps"},
 		{"--con"},
+		{"--con", ""},
+		{"--con=  "},
 	} {
 		if _, err := parseArgs(args); err == nil {
 			t.Errorf("parseArgs(%q) no devolvió error", args)

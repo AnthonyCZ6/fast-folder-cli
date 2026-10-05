@@ -33,6 +33,21 @@ func knownFolder(guid string) string {
 	return path
 }
 
+// driveType es windows.GetDriveType; las pruebas lo reemplazan para simular
+// una unidad de red.
+var driveType = windows.GetDriveType
+
+// remoteDrive indica si path está en una unidad de red (Z: conectada a
+// \\servidor\carpeta). Windows lo sabe sin conectarse al servidor.
+func remoteDrive(path string) bool {
+	vol := filepath.VolumeName(path)
+	if len(vol) != 2 || vol[1] != ':' {
+		return false
+	}
+	root, err := windows.UTF16PtrFromString(vol + `\`)
+	return err == nil && driveType(root) == windows.DRIVE_REMOTE
+}
+
 // HistoryOff explica por qué Windows no guarda el historial de archivos
 // recientes, o devuelve "" si lo guarda. Sin historial, las jump lists no
 // reciben nada nuevo.

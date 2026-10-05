@@ -13,5 +13,7 @@ func defaultDir() (string, error) {
 
 func knownFolder(string) string { return "" }
 
+func remoteDrive(string) bool { return false }
+
 // HistoryOff siempre devuelve "": fuera de Windows no hay ajuste que mirar.
 func HistoryOff() string { return "" }

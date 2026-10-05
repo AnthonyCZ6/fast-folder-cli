@@ -550,11 +550,18 @@ func parseArgs(args []string) (config, error) {
 		}
 		cfg.term = strings.Join(positional, " ")
 	}
+	emptyWith := false
 	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "p" || f.Name == "path" {
+		switch f.Name {
+		case "p", "path":
 			cfg.rootSet = true
+		case "con":
+			emptyWith = strings.TrimSpace(cfg.with) == ""
 		}
 	})
+	if emptyWith {
+		return cfg, errors.New("--con necesita el nombre de un programa (por ejemplo, --con word)")
+	}
 	for _, name := range strings.Split(exclude, ",") {
 		if name = strings.TrimSpace(name); name != "" {
 			cfg.exclude = append(cfg.exclude, name)

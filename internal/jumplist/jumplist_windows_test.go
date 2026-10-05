@@ -1,6 +1,7 @@
 package jumplist
 
 import (
+	"os"
 	"testing"
 
 	"golang.org/x/sys/windows"
@@ -33,4 +34,38 @@ func TestReadDirThisPC(t *testing.T) {
 		t.Errorf("%d de %d jump lists de este equipo no se pudieron leer", damaged, len(lists)+damaged)
 	}
 	t.Logf("%d jump lists; historial: %q", len(lists), HistoryOff())
+}
+
+// Las rutas de una unidad de red (Z: conectada a \servidor\carpeta) no son
+// locales: comprobar si existen podría bloquear la búsqueda si el servidor no
+// responde.
+func TestLocalPathRemoteDrive(t *testing.T) {
+	prev := driveType
+	t.Cleanup(func() { driveType = prev })
+	var asked []string
+	driveType = func(root *uint16) uint32 {
+		asked = append(asked, windows.UTF16PtrToString(root))
+		if windows.UTF16PtrToString(root) == `Z:\` {
+			return windows.DRIVE_REMOTE
+		}
+		return windows.DRIVE_FIXED
+	}
+	for path, want := range map[string]string{
+		`Z:\Equipo\informe.docx`: "",
+		`C:\Tesis\capítulo.docx`: `C:\Tesis\capítulo.docx`,
+	} {
+		if got := (Entry{Path: path}).LocalPath(); got != want {
+			t.Errorf("LocalPath(%q) = %q, want %q", path, got, want)
+		}
+	}
+	if len(asked) != 2 {
+		t.Errorf("se consultaron las unidades %q", asked)
+	}
+}
+
+// La unidad del sistema no es de red.
+func TestRemoteDriveSystem(t *testing.T) {
+	if remoteDrive(os.Getenv("SystemDrive") + `\Windows`) {
+		t.Error("la unidad del sistema no debería ser de red")
+	}
 }
