@@ -22,8 +22,10 @@ import (
 // pantalla con un emulador de terminal.
 
 // waitTimeout es lo máximo que se espera a que aparezca algo en la pantalla o
-// a que termine el programa.
-const waitTimeout = 15 * time.Second
+// a que termine el programa. Es generoso porque Windows PowerShell 5.1 puede
+// tardar mucho en arrancar en un runner ocupado; normalmente la espera acaba
+// en menos de un segundo.
+const waitTimeout = 60 * time.Second
 
 // console es un programa ejecutándose en una pseudoconsola.
 type console struct {
