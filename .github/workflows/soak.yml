@@ -1,0 +1,266 @@
+# Prueba larga (soak) de una versión publicada: la instala en 10 máquinas a
+# la vez (Windows Server 2025 y 2022 y Windows 11 ARM64, con el asistente o
+# con install.ps1; Ubuntu 24.04 y 22.04, x64 y ARM64, con go install) y en
+# cada una ejecuta sin parar, durante una hora, búsquedas, errores de uso, la
+# configuración y, en Windows, las apps, el modo interactivo y fcd
+# (e2e/soak_test.go). Cada máquina deja un informe en markdown con cualquier
+# fallo, y el último job los junta en uno: el artefacto "informe-final", que
+# también aparece en el resumen de la ejecución. Solo se ejecuta a mano:
+#
+#   gh workflow run soak.yml -f duracion=60 -f version=latest
+name: Prueba larga
+
+on:
+  workflow_dispatch:
+    inputs:
+      duracion:
+        description: Minutos de prueba en cada máquina (de 1 a 90)
+        type: number
+        default: 60
+        required: true
+      version:
+        description: Versión publicada que se prueba (v1.4.0 o posterior) o latest
+        type: string
+        default: latest
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: soak
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Preparar
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - name: Comprobar la duración y la versión
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DURACION: ${{ inputs.duracion }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ $DURACION =~ ^[0-9]+$ ]] || ((DURACION < 1 || DURACION > 90)); then
+            echo "::error::La duración debe estar entre 1 y 90 minutos: $DURACION"
+            exit 1
+          fi
+          if [ "$VERSION" = latest ]; then
+            tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          else
+            tag="v${VERSION#v}"
+          fi
+          if ! [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Versión no válida: $tag"
+            exit 1
+          fi
+          # Los casos de la prueba usan --json, --exclude y --config, que
+          # llegaron en la 1.4.0.
+          if [ "$(printf '%s\n' v1.4.0 "$tag" | sort -V | head -n 1)" != v1.4.0 ]; then
+            echo "::error::La prueba larga necesita la versión v1.4.0 o posterior: $tag"
+            exit 1
+          fi
+          # La versión tiene que estar publicada.
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json tagName > /dev/null
+          echo "Versión: $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  soak:
+    name: ${{ matrix.name }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    # Instalación (unos minutos) + la prueba (hasta 90) + su margen (20).
+    timeout-minutes: 130
+    # Los runners ARM64 son los más nuevos: sus fallos quedan en el informe,
+    # pero no marcan como fallida toda la ejecución.
+    continue-on-error: ${{ matrix.arm == true }}
+    strategy:
+      # Si falla una máquina, las demás siguen: el informe dice dónde falló.
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-2025-asistente
+            os: windows-2025
+            via: asistente
+            install: asistente (fast-folder-cli-setup.exe)
+          - name: windows-2025-script-pwsh
+            os: windows-2025
+            via: script
+            shell: pwsh
+            install: install.ps1 con PowerShell 7
+          - name: windows-2022-asistente
+            os: windows-2022
+            via: asistente
+            install: asistente (fast-folder-cli-setup.exe)
+          - name: windows-2022-script-ps51
+            os: windows-2022
+            via: script
+            shell: powershell
+            install: install.ps1 con Windows PowerShell 5.1
+          - name: windows-11-arm-asistente
+            os: windows-11-arm
+            via: asistente
+            install: asistente (fast-folder-cli-setup.exe)
+            arm: true
+          - name: windows-11-arm-script-ps51
+            os: windows-11-arm
+            via: script
+            shell: powershell
+            install: install.ps1 con Windows PowerShell 5.1
+            arm: true
+          - name: ubuntu-24.04
+            os: ubuntu-24.04
+            via: go
+            install: go install
+          - name: ubuntu-22.04
+            os: ubuntu-22.04
+            via: go
+            install: go install
+          - name: ubuntu-24.04-arm
+            os: ubuntu-24.04-arm
+            via: go
+            install: go install
+            arm: true
+          - name: ubuntu-22.04-arm
+            os: ubuntu-22.04-arm
+            via: go
+            install: go install
+            arm: true
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      FFC_SOAK_MACHINE: ${{ matrix.name }}
+      FFC_SOAK_INSTALL: ${{ matrix.install }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: stable
+
+      # El asistente publicado, verificado con su suma SHA-256. En ARM64
+      # instala el ejecutable ARM64.
+      - name: Instalar con el asistente
+        if: matrix.via == 'asistente'
+        shell: pwsh
+        run: |
+          $base = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG"
+          $dir = Join-Path $env:RUNNER_TEMP 'release'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          foreach ($f in 'fast-folder-cli-setup.exe', 'checksums.txt') {
+            Invoke-WebRequest -UseBasicParsing "$base/$f" -OutFile (Join-Path $dir $f)
+          }
+          $setup = Join-Path $dir 'fast-folder-cli-setup.exe'
+          $line = Get-Content (Join-Path $dir 'checksums.txt') |
+            Where-Object { ($_ -split '\s+')[-1] -eq 'fast-folder-cli-setup.exe' }
+          if (-not $line) { throw 'checksums.txt no tiene la suma del asistente' }
+          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash
+          if ($hash -ne ($line -split '\s+')[0]) { throw "SHA-256 inesperado para el asistente: $hash" }
+          $p = Start-Process $setup -Wait -PassThru -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=setup.log'
+          if ($p.ExitCode -ne 0) { Get-Content setup.log; throw "El asistente termino con el codigo $($p.ExitCode)" }
+
+      # Como "irm ... | iex": el script se lee como texto UTF-8 y se ejecuta
+      # como scriptblock, en la terminal de la máquina (5.1 o 7).
+      - name: Instalar con install.ps1
+        if: matrix.via == 'script'
+        shell: pwsh
+        env:
+          INSTALL_SHELL: ${{ matrix.shell }}
+        run: |
+          $command = "& ([scriptblock]::Create((Get-Content -Raw -Encoding UTF8 ./install.ps1))) -Version $env:TAG"
+          & $env:INSTALL_SHELL -NoLogo -NoProfile -ExecutionPolicy Bypass -Command $command
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 termino con el codigo $LASTEXITCODE" }
+
+      # La prueba comprueba el resto de la instalación (fast.exe, fcd, la
+      # arquitectura) y lo anota en el informe.
+      - name: Ubicar el programa instalado
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = "$env:LOCALAPPDATA\Programs\fast-folder-cli\fast-folder-cli.exe"
+          if (-not (Test-Path $exe)) { throw "No se instalo $exe" }
+          "FFC_SOAK_EXE=$exe" >> $env:GITHUB_ENV
+
+      - name: Instalar con go install
+        if: matrix.via == 'go'
+        run: |
+          go install "github.com/AnthonyCZ6/fast-folder-cli@${TAG}"
+          echo "FFC_SOAK_EXE=$(go env GOPATH)/bin/fast-folder-cli" >> "$GITHUB_ENV"
+
+      - name: Prueba de ${{ inputs.duracion }} minutos
+        id: soak
+        shell: bash
+        env:
+          DURACION: ${{ inputs.duracion }}
+          FFC_SOAK_DURATION: ${{ inputs.duracion }}m
+          FFC_SOAK_ARCH: ${{ runner.arch }}
+          FFC_SOAK_REPORT_DIR: ${{ github.workspace }}/informe
+        run: |
+          mkdir -p informe
+          export FFC_SOAK_VERSION="${TAG#v}"
+          go test -tags soak -run '^TestSoak$' -count=1 -v -timeout "$((DURACION + 20))m" ./e2e 2>&1 | tee informe/go-test.log
+
+      # Si la instalación falló o la prueba terminó sin escribir su informe,
+      # la máquina deja uno que lo dice: así figura en el informe final.
+      - name: Informe de una máquina sin prueba
+        if: always() && hashFiles('informe/resumen.json') == ''
+        shell: bash
+        env:
+          SOAK_OUTCOME: ${{ steps.soak.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mkdir -p informe
+          if [ "$SOAK_OUTCOME" = skipped ]; then
+            why="La instalación o la preparación fallaron antes de la prueba."
+          else
+            why="La prueba terminó sin escribir su informe (resultado: ${SOAK_OUTCOME:-desconocido}); ver go-test.log."
+          fi
+          printf '{"machine":"%s","install":"%s","system":"%s · %s","program":"","status":"sin prueba","minutes":0,"runs":0,"rounds":0,"failures":1,"warnings":0,"seed":"","failed":[{"scenario":"preparación","minute":"—","problem":"%s"}]}\n' \
+            "$FFC_SOAK_MACHINE" "$FFC_SOAK_INSTALL" "$RUNNER_OS" "$RUNNER_ARCH" "$why" > informe/resumen.json
+          printf '## %s — ⛔ sin prueba\n\n%s Log de la ejecución: %s\n' "$FFC_SOAK_MACHINE" "$why" "$RUN_URL" > informe/informe.md
+
+      - name: Guardar el informe
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: maquina-${{ matrix.name }}
+          path: informe/
+          retention-days: 30
+
+  report:
+    name: Informe final
+    needs: [prepare, soak]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # la lista de jobs, para las máquinas sin informe
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: maquina-*
+          path: informes
+
+      - name: Juntar los informes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          DURACION: ${{ inputs.duracion }}
+        run: |
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs" \
+            --jq '.jobs[] | select(.name != "Preparar" and .name != "Informe final") | [.name, (.conclusion // .status)] | @tsv' > jobs.tsv
+          bash .github/scripts/soak-report.sh informes "$TAG" "$DURACION" "$run_url" jobs.tsv > informe-final.md
+          # El resumen de la ejecución admite hasta 1 MiB.
+          head -c 900000 informe-final.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: informe-final
+          path: informe-final.md
+          retention-days: 30
