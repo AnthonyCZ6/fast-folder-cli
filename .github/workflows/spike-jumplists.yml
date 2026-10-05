@@ -1,0 +1,46 @@
+# Prueba de viabilidad (rama spike/jumplists, no se une a main): comprueba en
+# runners de Windows que se leen las jump lists que escribe Windows al
+# registrar archivos como abiertos recientemente (spike/jumplists).
+name: Spike jump lists
+
+on:
+  push:
+    branches:
+      - spike/jumplists
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    name: Jump lists (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, windows-2022, windows-11-arm]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: stable
+          cache: false
+
+      # El runner es desechable: se activa el historial de recientes por si
+      # la imagen lo trae desactivado, y se muestra si el Explorador está en
+      # marcha (lo necesita Windows para algunas listas).
+      - name: Estado del historial
+        shell: pwsh
+        run: |
+          $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+          Write-Host "Start_TrackDocs antes: $((Get-ItemProperty $key -ErrorAction SilentlyContinue).Start_TrackDocs)"
+          Write-Host "NoRecentDocsHistory: $((Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer' -ErrorAction SilentlyContinue).NoRecentDocsHistory)"
+          Set-ItemProperty $key -Name Start_TrackDocs -Value 1 -Type DWord
+          Get-Process explorer -ErrorAction SilentlyContinue | Format-Table Id, SessionId -AutoSize
+          [System.Environment]::OSVersion.VersionString
+
+      - name: Generar y leer
+        working-directory: spike/jumplists
+        run: go run .
