@@ -4,6 +4,7 @@ package humanize
 import (
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Int formatea un entero con separador de miles: 52341 -> "52,341".
@@ -52,4 +53,39 @@ func Bytes(n int64) string {
 		decimals = 0
 	}
 	return strconv.FormatFloat(v, 'f', decimals, 64) + " " + units[i]
+}
+
+// Ago describe cuándo fue t respecto a now, como se diría en una
+// conversación: "hace un momento", "hace 5 min", "hace 3 h" (si fue hoy),
+// "ayer a las 18:20", "hace 4 días" (en la última semana) o "el 12/09/2026".
+func Ago(t, now time.Time) string {
+	if t.IsZero() {
+		return "fecha desconocida"
+	}
+	t = t.In(now.Location())
+	d := now.Sub(t)
+	days := calendarDays(t, now)
+	switch {
+	case d < time.Minute: // también si t es posterior a now (reloj adelantado)
+		return "hace un momento"
+	case d < time.Hour:
+		return "hace " + strconv.Itoa(int(d.Minutes())) + " min"
+	case days == 0:
+		return "hace " + strconv.Itoa(int(d.Hours())) + " h"
+	case days == 1:
+		return "ayer a las " + t.Format("15:04")
+	case days < 7:
+		return "hace " + strconv.Itoa(days) + " días"
+	}
+	return "el " + t.Format("02/01/2006")
+}
+
+// calendarDays cuenta los cambios de día entre t y now (0 si son del mismo
+// día), sin que importen las horas.
+func calendarDays(t, now time.Time) int {
+	y1, m1, d1 := t.Date()
+	y2, m2, d2 := now.Date()
+	a := time.Date(y1, m1, d1, 0, 0, 0, 0, time.UTC)
+	b := time.Date(y2, m2, d2, 0, 0, 0, 0, time.UTC)
+	return int(b.Sub(a).Hours() / 24)
 }

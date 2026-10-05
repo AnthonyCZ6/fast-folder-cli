@@ -28,6 +28,9 @@ const (
 	Projects
 	// Apps busca aplicaciones instaladas por su nombre (paquete apps).
 	Apps
+	// Recent busca entre las carpetas usadas hace poco (paquete recent): el
+	// periodo se refiere a cuándo se usaron, no a cuándo se modificaron.
+	Recent
 )
 
 // errAppsPeriod indica que se pidió filtrar apps por fecha de modificación.
@@ -101,6 +104,8 @@ func (q Query) Describe() string {
 		parts = append(parts, "proyectos")
 	case q.Kind == Apps:
 		parts = append(parts, "apps")
+	case q.Kind == Recent:
+		parts = append(parts, "carpetas recientes")
 	case q.Term == "" || q.Period.Label != "":
 		parts = append(parts, "carpetas")
 	}
@@ -109,8 +114,11 @@ func (q Query) Describe() string {
 	}
 	if q.Period.Label != "" {
 		adjective := "modificadas"
-		if q.Kind == Projects {
+		switch q.Kind {
+		case Projects:
 			adjective = "modificados"
+		case Recent:
+			adjective = "usadas"
 		}
 		parts = append(parts, adjective+" "+q.Period.Label)
 	}

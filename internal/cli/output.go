@@ -39,6 +39,8 @@ type summary struct {
 	sized       bool  // se calculó el tamaño de los resultados (--size)
 	bytes       int64 // tamaño total de los resultados
 	files       int64 // archivos en total dentro de los resultados
+	lists       int   // jump lists leídas (--recientes)
+	damaged     int   // jump lists dañadas, omitidas (--recientes)
 }
 
 // printer da formato a la salida en consola. Con color desactivado (salida
@@ -207,8 +209,15 @@ func (p *printer) summary(s summary) {
 		p.field("Tamaño", p.paint(total, ansiBold)+" ("+humanize.Count(s.files, "archivo", "archivos")+")")
 	}
 
-	// Las apps no se buscan recorriendo carpetas.
-	if s.query.Kind != query.Apps {
+	switch s.query.Kind {
+	case query.Apps: // no se buscan recorriendo carpetas
+	case query.Recent:
+		lists := humanize.Count(int64(s.lists), "lista de Windows", "listas de Windows")
+		if s.damaged > 0 {
+			lists += p.paint(" ("+humanize.Count(int64(s.damaged), "dañada", "dañadas")+", omitidas)", ansiDim)
+		}
+		p.field("Historial", lists)
+	default:
 		scanned := humanize.Count(s.scanned, "carpeta", "carpetas")
 		if s.denied > 0 {
 			scanned += p.paint(" ("+humanize.Int(s.denied)+" sin acceso, omitidas)", ansiDim)

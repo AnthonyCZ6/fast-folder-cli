@@ -3,6 +3,7 @@ package humanize
 import (
 	"math"
 	"testing"
+	"time"
 )
 
 func TestIntExtremes(t *testing.T) {
@@ -65,6 +66,29 @@ func TestBytes(t *testing.T) {
 	for _, tt := range tests {
 		if got := Bytes(tt.n); got != tt.want {
 			t.Errorf("Bytes(%d) = %q, want %q", tt.n, got, tt.want)
+		}
+	}
+}
+
+func TestAgo(t *testing.T) {
+	now := time.Date(2026, 10, 5, 12, 30, 0, 0, time.Local)
+	tests := []struct {
+		t    time.Time
+		want string
+	}{
+		{time.Time{}, "fecha desconocida"},
+		{now.Add(10 * time.Second), "hace un momento"}, // reloj adelantado
+		{now.Add(-30 * time.Second), "hace un momento"},
+		{now.Add(-5 * time.Minute), "hace 5 min"},
+		{now.Add(-3 * time.Hour), "hace 3 h"},
+		{time.Date(2026, 10, 4, 18, 20, 0, 0, time.Local), "ayer a las 18:20"},
+		{time.Date(2026, 10, 4, 23, 59, 0, 0, time.Local), "ayer a las 23:59"}, // menos de 24 h
+		{time.Date(2026, 10, 1, 9, 0, 0, 0, time.Local), "hace 4 días"},
+		{time.Date(2026, 9, 12, 9, 0, 0, 0, time.Local), "el 12/09/2026"},
+	}
+	for _, tt := range tests {
+		if got := Ago(tt.t, now); got != tt.want {
+			t.Errorf("Ago(%v) = %q, want %q", tt.t, got, tt.want)
 		}
 	}
 }

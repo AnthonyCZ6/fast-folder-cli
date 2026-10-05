@@ -65,6 +65,8 @@ func TestDescribe(t *testing.T) {
 		{"", Projects, "ayer", "proyectos modificados ayer"},
 		{"", Apps, "", "apps"},
 		{"chrome", Apps, "", `apps "chrome"`},
+		{"", Recent, "", "carpetas recientes"},
+		{"tesis", Recent, "ayer", `carpetas recientes "tesis" usadas ayer`},
 	}
 	for _, tt := range tests {
 		if got := mustNew(t, tt.term, tt.kind, tt.modified).Describe(); got != tt.want {

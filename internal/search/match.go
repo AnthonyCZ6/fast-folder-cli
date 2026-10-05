@@ -47,6 +47,11 @@ func (m *Matcher) Match(name string) bool {
 	return strings.Contains(name, m.pattern)
 }
 
+// Fold normaliza un nombre de carpeta como lo compara la búsqueda: en
+// minúsculas y sin acentos. Sirve para comparar nombres fuera del recorrido
+// (por ejemplo, las carpetas excluidas de las carpetas recientes).
+func Fold(s string) string { return fold(s) }
+
 // fold pasa s a minúsculas y le quita los acentos, la diéresis y la tilde de
 // la ñ, para comparar nombres como lo haría una persona al escribir rápido.
 func fold(s string) string {

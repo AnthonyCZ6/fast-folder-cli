@@ -70,6 +70,7 @@ type config struct {
 	modified string
 	projects bool
 	apps     bool
+	recent   bool // --recientes: carpetas usadas hace poco
 	size     bool
 	cdFile   string
 	exclude  []string // carpetas excluidas: las de --exclude y las del archivo
@@ -130,10 +131,37 @@ func (cfg config) kind() query.Kind {
 	switch {
 	case cfg.apps:
 		return query.Apps
+	case cfg.recent:
+		return query.Recent
 	case cfg.projects:
 		return query.Projects
 	}
 	return query.Folders
+}
+
+// checkKinds rechaza las combinaciones de opciones que no tienen sentido.
+func (cfg config) checkKinds() error {
+	if err := cfg.checkRecent(); err != nil {
+		return err
+	}
+	return cfg.checkApps()
+}
+
+// checkRecent rechaza las opciones que no tienen sentido con --recientes,
+// que no recorre carpetas sino el historial de Windows.
+func (cfg config) checkRecent() error {
+	if !cfg.recent {
+		return nil
+	}
+	switch {
+	case cfg.apps:
+		return errors.New("--recientes y --apps no se pueden usar juntas")
+	case cfg.projects:
+		return errors.New("--recientes y --projects no se pueden usar juntas")
+	case cfg.size:
+		return errors.New("--size no se aplica a las carpetas recientes")
+	}
+	return nil
 }
 
 // checkApps rechaza las opciones que no tienen sentido al buscar apps, que
@@ -202,8 +230,11 @@ func Run(args []string, stdout, stderr io.Writer, version string) int {
 	case err != nil:
 		return usageError(stderr, err)
 	}
-	if q.Kind == query.Apps {
+	switch q.Kind {
+	case query.Apps:
 		return runApps(cfg, q, stdout, stderr)
+	case query.Recent:
+		return runRecent(cfg, q, stdout, stderr)
 	}
 
 	root, err := pathutil.Resolve(cfg.root)
@@ -476,6 +507,7 @@ func parseArgs(args []string) (config, error) {
 	fs.StringVar(&cfg.modified, "modified", "", "")
 	fs.BoolVar(&cfg.projects, "projects", false, "")
 	fs.BoolVar(&cfg.apps, "apps", false, "")
+	fs.BoolVar(&cfg.recent, "recientes", false, "")
 	fs.BoolVar(&cfg.size, "s", false, "")
 	fs.BoolVar(&cfg.size, "size", false, "")
 	fs.StringVar(&cfg.cdFile, "cd-file", "", "")
@@ -521,7 +553,7 @@ func parseArgs(args []string) (config, error) {
 			cfg.exclude = append(cfg.exclude, name)
 		}
 	}
-	return cfg, cfg.checkApps()
+	return cfg, cfg.checkKinds()
 }
 
 // flagErrors asocia el comienzo de cada error del paquete flag con su
@@ -566,6 +598,7 @@ Uso:
   fast-folder-cli -n <término> [-p <ruta>] [opciones]
   fast-folder-cli <término> [opciones]
   fast-folder-cli --projects [término] [opciones]
+  fast-folder-cli --recientes [término] [opciones]
   fast-folder-cli --apps [término] [-o]
 
 Si lo instalaste con el asistente o el script, también puedes escribir "fast",
@@ -583,6 +616,11 @@ Opciones:
                             (2026-09-01).
       --projects            Busca carpetas de proyectos (Git, Node.js, Python,
                             Go, .NET, Java, Unity...) en lugar de cualquier carpeta.
+      --recientes           Busca entre las carpetas en las que trabajaste hace
+                            poco (las de lo que abriste en cualquier programa,
+                            según el historial de Windows), de la usada más
+                            recientemente a la más antigua. Con -m, por cuándo
+                            las usaste; con -p, solo dentro de esa carpeta.
       --apps                Busca aplicaciones instaladas por su nombre (las de
                             Configuración → Aplicaciones). Con -o abre su
                             ubicación con el ejecutable seleccionado.
@@ -607,6 +645,7 @@ Ejemplos:
   fast-folder-cli --projects
   fast-folder-cli -m ayer -p %USERPROFILE%\Documents
   fast-folder-cli node_modules --size -p C:\dev
+  fast-folder-cli --recientes -m ayer
   fast-folder-cli --apps chrome -o
 
 Códigos de salida: 0 = hay resultados, 1 = sin resultados, 2 = error de uso,
