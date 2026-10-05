@@ -212,17 +212,28 @@ func copyScript(t *testing.T, name, dir string) {
 // fcdPowerShell ejecuta "fcd cancion -p root" en shell y guarda en pwd la
 // carpeta en la que queda la sesión.
 func fcdPowerShell(shell, dir, root, pwd string) *exec.Cmd {
-	script := "& '" + filepath.Join(dir, "fcd.ps1") + "' cancion -p '" + root + "'; " +
+	return fcdPowerShellArgs(shell, dir, "cancion -p '"+root+"'", pwd)
+}
+
+// fcdPowerShellArgs ejecuta "fcd args" en shell (args con la sintaxis de
+// PowerShell) y guarda en pwd la carpeta en la que queda la sesión.
+func fcdPowerShellArgs(shell, dir, args, pwd string) *exec.Cmd {
+	script := "& '" + filepath.Join(dir, "fcd.ps1") + "' " + args + "; " +
 		"(Get-Location).Path | Out-File -LiteralPath '" + pwd + "' -Encoding utf8"
 	return exec.Command(shell, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
 }
 
-// fcdCmd hace lo mismo en cmd.exe. Con la página de códigos UTF-8, "cd"
-// escribe la carpeta en UTF-8.
+// fcdCmd hace lo mismo en cmd.exe.
 func fcdCmd(dir, root, pwd string) *exec.Cmd {
+	return fcdCmdArgs(dir, `cancion -p "`+root+`"`, pwd)
+}
+
+// fcdCmdArgs ejecuta "fcd args" en cmd.exe (args con la sintaxis de cmd).
+// Con la página de códigos UTF-8, "cd" escribe la carpeta en UTF-8.
+func fcdCmdArgs(dir, args, pwd string) *exec.Cmd {
 	cmd := exec.Command("cmd.exe")
 	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `cmd.exe /c chcp 65001 >nul & call "` +
-		filepath.Join(dir, "fcd.cmd") + `" cancion -p "` + root + `" & cd > "` + pwd + `"`}
+		filepath.Join(dir, "fcd.cmd") + `" ` + args + ` & cd > "` + pwd + `"`}
 	return cmd
 }
 

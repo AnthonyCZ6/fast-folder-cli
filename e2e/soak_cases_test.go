@@ -11,6 +11,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/jumplist"
+	"github.com/AnthonyCZ6/fast-folder-cli/internal/jumplist/jumplisttest"
 )
 
 // Lo que se espera del árbol de benchtree: 10 áreas de 20 proyectos (la
@@ -46,6 +50,7 @@ func commonScenarios() []scenario {
 		{"tamaño", (*soak).caseSize},
 		{"errores-de-uso", (*soak).caseUsageErrors},
 		{"configuración", (*soak).caseConfig},
+		{"recientes", (*soak).caseRecent},
 	}
 }
 
@@ -232,6 +237,79 @@ func (s *soak) caseConfig() outcome {
 			o := run("src", "-p", s.tree).expect(0, foundAll)
 			if !strings.Contains(o.stderr, "aviso: se ignora la configuración") {
 				o = o.fail("no avisó de que la configuración no es válida")
+			}
+			return o
+		},
+	)
+}
+
+// Historial sintético de la prueba larga: Word abrió un documento en la
+// carpeta docs de los primeros soakWordDocs proyectos y el Explorador abrió
+// la carpeta src de los soakExplorerDirs siguientes.
+const (
+	soakWordDocs     = 20
+	soakExplorerDirs = 10
+)
+
+// writeSoakHistory escribe en dir las jump lists del historial sintético,
+// con rutas del árbol tree de benchtree.
+func writeSoakHistory(dir, tree string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	project := func(n int) string {
+		return filepath.Join(tree, fmt.Sprintf("area-%02d", n/20), fmt.Sprintf("Proyecto-%03d", n))
+	}
+	now := time.Now()
+	var word, explorer []jumplisttest.Entry
+	for i := range soakWordDocs {
+		word = append(word, jumplisttest.Entry{
+			Path: filepath.Join(project(i), "docs", "informe.docx"), LastUsed: now.Add(-time.Duration(i) * time.Minute),
+		})
+	}
+	for i := range soakExplorerDirs {
+		explorer = append(explorer, jumplisttest.Entry{
+			Path: filepath.Join(project(soakWordDocs+i), "src"), LastUsed: now.Add(-time.Duration(i) * time.Hour),
+		})
+	}
+	if err := jumplisttest.Write(dir, jumplist.AppID("Microsoft.Office.WINWORD.EXE.15"), 6, word); err != nil {
+		return err
+	}
+	return jumplisttest.Write(dir, jumplist.AppID("Microsoft.Windows.Explorer"), 4, explorer)
+}
+
+// --recientes y --con con el historial sintético: todas las carpetas, las
+// de un nombre y, en JSON, las de Word con el nombre del programa.
+func (s *soak) caseRecent() outcome {
+	env := []string{jumplist.EnvDir + "=" + s.history}
+	run := func(args ...string) outcome { return s.exec(s.exe, env, args...) }
+	all := fmt.Sprintf("Resultados : %d carpetas encontradas", soakWordDocs+soakExplorerDirs)
+	return steps(
+		func() outcome { return run("--recientes", "-p", s.tree).expect(0, all, "· Word)") },
+		func() outcome {
+			return run("--recientes", "src", "-p", s.tree).expect(0, fmt.Sprintf("Resultados : %d carpetas encontradas", soakExplorerDirs))
+		},
+		func() outcome {
+			o := run("--con", "word", "--json", "-p", s.tree).expect(0)
+			lines := nonEmptyLines(o.stdout)
+			if len(lines) != soakWordDocs {
+				return o.fail("%d líneas JSON, se esperaban %d", len(lines), soakWordDocs)
+			}
+			for _, line := range lines {
+				var f recentJSON
+				if err := json.Unmarshal([]byte(line), &f); err != nil {
+					return o.fail("línea JSON no válida (%v): %s", err, line)
+				}
+				if filepath.Base(f.Path) != "docs" || f.Files != 1 || len(f.Apps) != 1 || f.Apps[0] != "Word" {
+					return o.fail("carpeta inesperada: %+v", f)
+				}
+			}
+			return o
+		},
+		func() outcome {
+			o := run("--con", "photoshop").expect(2)
+			if !strings.Contains(o.stderr, `no se reconoce el programa "photoshop"`) {
+				o = o.fail("no dijo que no reconoce el programa")
 			}
 			return o
 		},

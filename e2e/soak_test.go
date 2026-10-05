@@ -121,6 +121,7 @@ type soak struct {
 	tree    string // árbol de unas 6.000 carpetas (benchtree)
 	small   string // árbol pequeño con nombres especiales, para fcd
 	work    string // carpeta de trabajo: configuraciones, archivos de fcd
+	history string // jump lists sintéticas para --recientes (FFC_JUMPLIST_DIR)
 	tempDir string // TEMP de los procesos, para ver si dejan archivos
 	program string // lo que muestra --version al empezar
 	start   time.Time
@@ -225,6 +226,10 @@ func newSoak(t *testing.T, cfg soakConfig) *soak {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
+	}
+	s.history = filepath.Join(s.work, "jumplists")
+	if err := writeSoakHistory(s.history, tree); err != nil {
+		t.Fatalf("no se pudo crear el historial sintético: %v", err)
 	}
 	s.start = time.Now()
 	return s
