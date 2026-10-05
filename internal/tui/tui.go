@@ -29,6 +29,7 @@ type Options struct {
 	Modified string     // periodo de modificación, como en --modified
 	CDFile   string     // si no está vacío, Enter escribe aquí la carpeta elegida y sale (fcd)
 	Exclude  []string   // carpetas que no se muestran ni se recorren
+	With     string     // con Kind Recent: solo lo abierto con este programa, como --con
 
 	// Prefs son las preferencias del archivo de configuración: ubicaciones
 	// propias, editor, terminal y carpetas recientes.
@@ -111,6 +112,7 @@ type model struct {
 	dateIndex int
 	hidden    bool
 	exclude   []string // carpetas que no se muestran ni se recorren
+	with      string   // recientes: solo lo abierto con este programa (fcd --con)
 	formErr   string
 
 	// Resultados.
@@ -167,6 +169,7 @@ func (m model) apply(opts Options) model {
 	m.input.CursorEnd()
 	m.hidden = opts.Hidden
 	m.exclude = opts.Exclude
+	m.with = opts.With
 	m.cdFile = opts.CDFile
 	for i, k := range kindOptions {
 		if k.kind == opts.Kind {

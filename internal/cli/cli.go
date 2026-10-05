@@ -421,6 +421,7 @@ func runInteractive(cfg config, stdout, stderr io.Writer, version string) int {
 		Modified: cfg.modified,
 		CDFile:   cfg.cdFile,
 		Exclude:  cfg.exclude,
+		With:     cfg.with,
 		Prefs:    cfg.prefs,
 	}
 	if cfg.root != defaultRoot {

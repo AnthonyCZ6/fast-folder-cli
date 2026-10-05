@@ -70,7 +70,7 @@ func (m model) startSearch() (tea.Model, tea.Cmd) {
 	case query.Recent:
 		m.cancelSearch()
 		m = m.begin(q, "")
-		return m.withSpinner(findRecent(m.gen, m.acts.history, m.recentOptions(q), ""))
+		return m.withSpinner(findRecent(m.gen, m.acts.history, m.recentOptions(q), m.with))
 	}
 	if len(m.locations) == 0 {
 		m.formErr = "No hay ubicaciones disponibles para buscar."

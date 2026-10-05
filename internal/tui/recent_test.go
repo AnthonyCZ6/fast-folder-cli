@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -247,5 +248,48 @@ func TestRecentLongTagIsTruncated(t *testing.T) {
 		if !ok {
 			t.Errorf("falta una línea con %s, el programa y %s:\n%s", name, parent, view)
 		}
+	}
+}
+
+// fcd --con word abre el modo interactivo con las recientes de Word, y Enter
+// guarda la carpeta elegida para que el script entre en ella.
+func TestApplyRecentWith(t *testing.T) {
+	cdFile := filepath.Join(t.TempDir(), "elegida.txt")
+	m, rec := newTestModel(testLocations...)
+	tesis, cancion, _ := withHistory(t, rec)
+	m = m.apply(Options{Kind: query.Recent, With: "word", Hidden: true, CDFile: cdFile})
+	m = drain(t, m, m.initCmd)
+	if got, want := resultPaths(m), []string{tesis, cancion}; !slices.Equal(got, want) {
+		t.Fatalf("resultados = %q, want solo los de Word %q", got, want)
+	}
+	if view := m.View().Content; !strings.Contains(view, "Carpetas recientes (Word)") {
+		t.Errorf("la cabecera debería nombrar el programa:\n%s", view)
+	}
+
+	m = send(m, keys("enter")...)
+	if got, err := os.ReadFile(cdFile); err != nil || string(got) != tesis {
+		t.Errorf("carpeta guardada = %q, %v; want %q", got, err, tesis)
+	}
+	if len(rec.calls) != 0 {
+		t.Errorf("en el modo fcd Enter no debería abrir nada: %v", rec.calls)
+	}
+
+	// En el formulario, el tipo dice con qué programa se filtra.
+	m = send(m, keys("left")...)
+	if view := m.View().Content; !strings.Contains(view, "solo lo que abriste con word") {
+		t.Errorf("el formulario debería decir el programa:\n%s", view)
+	}
+}
+
+// Un programa que no se reconoce da un error que dice cuáles tienen
+// historial.
+func TestApplyRecentWithUnknownProgram(t *testing.T) {
+	m, rec := newTestModel(testLocations...)
+	withHistory(t, rec)
+	m = m.apply(Options{Kind: query.Recent, With: "photoshop"})
+	m = drain(t, m, m.initCmd)
+	want := `No se reconoce el programa "photoshop". Tienen historial: Explorador de archivos, Word`
+	if !m.statusErr || m.status != want || len(m.results) != 0 {
+		t.Errorf("estado = %q (error %v), %d resultados; want %q", m.status, m.statusErr, len(m.results), want)
 	}
 }

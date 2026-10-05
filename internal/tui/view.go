@@ -43,6 +43,9 @@ func (m model) viewForm() string {
 		b.WriteString(m.optionRow(fieldLocation, "Ubicación", loc.Label, loc.Path, valueW) + "\n")
 	}
 	kind := kindOptions[m.kindIndex]
+	if kind.kind == query.Recent && m.with != "" {
+		kind.hint = "solo lo que abriste con " + m.with
+	}
 	b.WriteString(m.optionRow(fieldKind, "Tipo", kind.label, kind.hint, valueW) + "\n")
 	date, dateLabel, dateHint := m.dates[m.dateIndex].label, "Modificada", "fecha de modificación de la carpeta"
 	if m.kind() == query.Recent {
