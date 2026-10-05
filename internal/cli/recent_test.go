@@ -42,15 +42,17 @@ func recentFixture(t *testing.T, historyReason string) string {
 		t.Fatal(err)
 	}
 	t.Setenv(jumplist.EnvDir, dir)
-	prevOff, prevNames := historyOff, appNames
-	historyOff = func() string { return historyReason }
-	appNames = func() map[uint64]recent.AppName {
-		return map[uint64]recent.AppName{
+	prev := loadHistory
+	loadHistory = func() (recent.History, error) {
+		h, err := recent.LoadLists() // de FFC_JUMPLIST_DIR, que una prueba puede cambiar
+		h.Off = historyReason
+		h.Names = map[uint64]recent.AppName{
 			word:     {Name: "Word", Aliases: []string{"WINWORD"}},
 			explorer: {Name: "Explorador de archivos"},
 		}
+		return h, err
 	}
-	t.Cleanup(func() { historyOff, appNames = prevOff, prevNames })
+	t.Cleanup(func() { loadHistory = prev })
 	return root
 }
 
