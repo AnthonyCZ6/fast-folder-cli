@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -33,28 +34,47 @@ type console struct {
 	emu *vt.SafeEmulator
 }
 
-// startConsole ejecuta cmd en una pseudoconsola de 120×30.
-func startConsole(t *testing.T, cmd *exec.Cmd) *console {
-	t.Helper()
+// errNoConsole indica que este Windows no tiene pseudoconsola (ConPTY).
+var errNoConsole = errors.New("no hay pseudoconsola disponible")
+
+// openConsole ejecuta cmd en una pseudoconsola de 120×30. release termina el
+// programa si sigue en marcha y libera la consola. Lo usan estas pruebas y la
+// prueba larga (soak), que registra los errores en lugar de detenerse.
+func openConsole(cmd *exec.Cmd) (c *console, release func(), err error) {
 	pty, err := xpty.NewPty(120, 30)
 	if err != nil {
-		t.Skipf("no hay pseudoconsola disponible: %v", err)
+		return nil, nil, fmt.Errorf("%w: %v", errNoConsole, err)
 	}
 	emu := vt.NewSafeEmulator(120, 30)
 	if err := pty.Start(cmd); err != nil {
 		pty.Close()
-		t.Fatalf("no se pudo iniciar %v: %v", cmd.Args, err)
+		emu.Close()
+		return nil, nil, fmt.Errorf("no se pudo iniciar %v: %w", cmd.Args, err)
 	}
 	go func() { _, _ = io.Copy(emu, pty) }() // lo que dibuja el programa
 	go func() { _, _ = io.Copy(pty, emu) }() // teclas y respuestas del terminal
-	t.Cleanup(func() {
+	release = func() {
 		if cmd.ProcessState == nil {
 			_ = cmd.Process.Kill()
 		}
 		pty.Close()
 		emu.Close()
-	})
-	return &console{cmd: cmd, emu: emu}
+	}
+	return &console{cmd: cmd, emu: emu}, release, nil
+}
+
+// startConsole ejecuta cmd en una pseudoconsola de 120×30.
+func startConsole(t *testing.T, cmd *exec.Cmd) *console {
+	t.Helper()
+	c, release, err := openConsole(cmd)
+	switch {
+	case errors.Is(err, errNoConsole):
+		t.Skip(err)
+	case err != nil:
+		t.Fatal(err)
+	}
+	t.Cleanup(release)
+	return c
 }
 
 // screen devuelve el texto de la pantalla, sin colores.
@@ -62,40 +82,62 @@ func (c *console) screen() string {
 	return ansi.Strip(c.emu.Render())
 }
 
-// waitFor espera a que la pantalla muestre want.
-func (c *console) waitFor(t *testing.T, want string) {
-	t.Helper()
+// await espera a que la pantalla muestre want.
+func (c *console) await(want string) error {
 	for deadline := time.Now().Add(waitTimeout); time.Now().Before(deadline); {
 		if strings.Contains(c.screen(), want) {
-			return
+			return nil
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("la pantalla no muestra %q:\n%s", want, c.screen())
+	return fmt.Errorf("la pantalla no muestra %q", want)
+}
+
+// waitFor espera a que la pantalla muestre want.
+func (c *console) waitFor(t *testing.T, want string) {
+	t.Helper()
+	if err := c.await(want); err != nil {
+		t.Fatalf("%v:\n%s", err, c.screen())
+	}
+}
+
+// press escribe keys como si se pulsaran en el teclado.
+func (c *console) press(keys string) error {
+	_, err := io.WriteString(c.emu.InputPipe(), keys)
+	return err
 }
 
 // send escribe keys como si se pulsaran en el teclado.
 func (c *console) send(t *testing.T, keys string) {
 	t.Helper()
-	if _, err := io.WriteString(c.emu.InputPipe(), keys); err != nil {
+	if err := c.press(keys); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// wait espera a que el programa termine y devuelve su código de salida.
-func (c *console) wait(t *testing.T) int {
-	t.Helper()
+// exitCode espera a que el programa termine y devuelve su código de salida.
+func (c *console) exitCode() (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), waitTimeout)
 	defer cancel()
 	err := xpty.WaitProcess(ctx, c.cmd)
 	var exitErr *exec.ExitError
 	switch {
 	case errors.As(err, &exitErr):
-		return exitErr.ExitCode()
+		return exitErr.ExitCode(), nil
 	case err != nil:
-		t.Fatalf("el programa no terminó: %v\n%s", err, c.screen())
+		return -1, fmt.Errorf("el programa no terminó: %w", err)
 	}
-	return c.cmd.ProcessState.ExitCode()
+	return c.cmd.ProcessState.ExitCode(), nil
+}
+
+// wait espera a que el programa termine y devuelve su código de salida.
+func (c *console) wait(t *testing.T) int {
+	t.Helper()
+	code, err := c.exitCode()
+	if err != nil {
+		t.Fatalf("%v\n%s", err, c.screen())
+	}
+	return code
 }
 
 // Formulario, búsqueda con Enter y salida con q, en una consola real.
@@ -184,29 +226,44 @@ func fcdCmd(dir, root, pwd string) *exec.Cmd {
 	return cmd
 }
 
-// readPwd lee la carpeta que guardó la terminal, sin la marca BOM que añade
+// pwdOf lee la carpeta que guardó la terminal, sin la marca BOM que añade
 // Windows PowerShell 5.1.
-func readPwd(t *testing.T, pwd string) string {
-	t.Helper()
+func pwdOf(pwd string) (string, error) {
 	data, err := os.ReadFile(pwd)
 	if err != nil {
-		t.Fatalf("la terminal no guardó su carpeta: %v", err)
+		return "", fmt.Errorf("la terminal no guardó su carpeta: %w", err)
 	}
-	return strings.TrimSpace(strings.TrimPrefix(string(data), "\ufeff"))
+	return strings.TrimSpace(strings.TrimPrefix(string(data), "\ufeff")), nil
 }
 
-// assertSameDir comprueba que got y want son la misma carpeta.
-func assertSameDir(t *testing.T, got, want string) {
+func readPwd(t *testing.T, pwd string) string {
 	t.Helper()
-	gotInfo, err := os.Stat(got)
-	if err != nil {
-		t.Fatalf("la terminal no quedó en una carpeta válida: %q", got)
-	}
-	wantInfo, err := os.Stat(want)
+	dir, err := pwdOf(pwd)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return dir
+}
+
+// sameDir comprueba que got y want son la misma carpeta.
+func sameDir(got, want string) error {
+	gotInfo, err := os.Stat(got)
+	if err != nil {
+		return fmt.Errorf("la terminal no quedó en una carpeta válida: %q", got)
+	}
+	wantInfo, err := os.Stat(want)
+	if err != nil {
+		return err
+	}
 	if !os.SameFile(gotInfo, wantInfo) {
-		t.Errorf("la terminal quedó en %q, want %q", got, want)
+		return fmt.Errorf("la terminal quedó en %q, want %q", got, want)
+	}
+	return nil
+}
+
+func assertSameDir(t *testing.T, got, want string) {
+	t.Helper()
+	if err := sameDir(got, want); err != nil {
+		t.Error(err)
 	}
 }
