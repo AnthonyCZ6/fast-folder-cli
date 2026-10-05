@@ -35,6 +35,7 @@ Tiempo     : 854 ms
 | 📂 **Entra en la carpeta** | `fcd tesis` busca, eliges con las flechas y la terminal **queda dentro** de la carpeta. |
 | 🧑‍💻 **Tus proyectos** | `fast --projects` lista todos tus proyectos (Git, Node.js, Python, Go, .NET, Java, Unity...) aunque estén regados por Descargas, el Escritorio o Documentos. |
 | 📦 **¿Dónde se instaló?** | `fast --apps chrome -o` encuentra una app instalada y abre su carpeta con el ejecutable seleccionado. |
+| 🕒 **¿Dónde guardé eso?** | `fast --recientes` muestra las carpetas de lo que abriste hace poco, en cualquier programa; `fast --con word`, solo las de lo que abriste con Word. Sin recordar el nombre. |
 | 📅 **"¿En qué trabajé ayer?"** | `fast -m ayer` muestra las carpetas modificadas ayer; también `hoy`, `semana`, `mes`... |
 | 💾 **¿Qué ocupa tanto?** | `fast node_modules --size` dice cuánto pesa cada carpeta, de mayor a menor. |
 | 🖱️ **Desde el Explorador** | Clic derecho en una carpeta → **Buscar carpetas aquí**. |
@@ -269,7 +270,7 @@ fast
 y se abre una pantalla de búsqueda que se maneja sin escribir comandos:
 
 ```text
- fast-folder-cli   v1.2.0
+ fast-folder-cli   v1.5.0
 
  ► Buscar     cancion
    Ubicación    Documentos           C:\Users\usuario\Documents
@@ -284,9 +285,11 @@ y se abre una pantalla de búsqueda que se maneja sin escribir comandos:
 2. Con **↓** baja a **Ubicación** y elige dónde buscar con **← →**: tu perfil, Escritorio,
    Documentos, Descargas, la carpeta actual, AppData, ProgramData o cualquier unidad (C:, D:...).
 3. En **Tipo** elige **Proyectos** para buscar solo [carpetas de proyectos](#buscar-proyectos),
-   o **Apps** para buscar [aplicaciones instaladas](#buscar-apps-instaladas); así el nombre
+   **Apps** para buscar [aplicaciones instaladas](#buscar-apps-instaladas) o **Recientes**
+   para ver las [carpetas de lo que abriste hace poco](#carpetas-recientes); así el nombre
    es opcional y, sin él, aparecen todos. Con **Apps**, Enter abre la ubicación de la app y
-   los campos Ubicación, Modificada y Ocultas no se aplican.
+   los campos Ubicación, Modificada y Ocultas no se aplican. Con **Recientes**, Ubicación no
+   se aplica y Modificada pasa a ser **Usada**: cuándo abriste algo en la carpeta.
 4. En **Modificada** elige **Hoy**, **Ayer**, **Últimos 7 días** o **Últimos 30 días** para
    ver solo las carpetas modificadas en ese periodo.
 5. En **Ocultas** actívalas si también quieres buscar en carpetas ocultas y de sistema.
@@ -368,11 +371,13 @@ Si solo indicas opciones, como `fast -p D:`, abre el modo interactivo con ellas.
 
 | Corta | Larga | Descripción | Por defecto |
 | --- | --- | --- | --- |
-| `-n` | `--name` | Término o patrón a buscar en los nombres de carpeta. También puede indicarse como argumento posicional. | *(obligatorio, salvo con `--projects`, `--apps` o `-m`)* |
+| `-n` | `--name` | Término o patrón a buscar en los nombres de carpeta. También puede indicarse como argumento posicional. | *(obligatorio, salvo con `--projects`, `--apps`, `--recientes` o `-m`)* |
 | `-p` | `--path` | Carpeta raíz desde la que comienza la búsqueda. Admite variables de entorno. | `%USERPROFILE%` |
 | `-m` | `--modified` | Solo carpetas [modificadas](#filtrar-por-fecha-de-modificación) en ese periodo: `hoy`, `ayer`, `semana`, `mes`, `año`, un número de días (`3d`) o una fecha (`2026-09-01`). | cualquier fecha |
 | | `--projects` | Busca [carpetas de proyectos](#buscar-proyectos) en lugar de cualquier carpeta. | desactivado |
 | | `--apps` | Busca [aplicaciones instaladas](#buscar-apps-instaladas) por su nombre en lugar de carpetas. Con `-o` abre su ubicación. | desactivado |
+| | `--recientes` | Busca entre las [carpetas de lo que abriste hace poco](#carpetas-recientes), de la más reciente a la más antigua. Con `-m`, por cuándo se usaron. | desactivado |
+| | `--con` | Solo las carpetas recientes de lo que abriste con ese programa (`--con word`, `--con code`). Implica `--recientes`. | cualquier programa |
 | `-s` | `--size` | Calcula [cuánto ocupa](#cuánto-ocupa-cada-carpeta) cada carpeta encontrada y las ordena de mayor a menor. | desactivado |
 | `-a` | `--all` | Incluye carpetas ocultas y de sistema. | desactivado |
 | `-o` | `--open` | Abre la primera carpeta encontrada en el Explorador de Windows. | desactivado |
@@ -421,6 +426,9 @@ fast-folder-cli node_modules --size -p C:\dev
 
 # Dónde se instaló Chrome: abre su carpeta con chrome.exe seleccionado
 fast-folder-cli --apps chrome -o
+
+# Las carpetas de lo que abriste esta semana con Word
+fast-folder-cli --con word -m semana
 ```
 
 ### Buscar proyectos
@@ -478,6 +486,45 @@ Explorador con el ejecutable seleccionado:
   aplican a las apps.
 - `fcd --apps steam` te deja en la carpeta de la app elegida, por ejemplo para ejecutar
   sus herramientas desde la terminal.
+
+### Carpetas recientes
+
+¿Dónde guardaste el documento de ayer? `--recientes` (o **Tipo: Recientes** en el modo
+interactivo) muestra las carpetas de lo que abriste hace poco, en cualquier programa, de la
+más reciente a la más antigua, con cuándo, cuántos archivos y con qué programas:
+
+```text
+> fast --recientes
+
+Buscando carpetas recientes en el historial de Windows (ocultas/sistema: excluidas)
+
+  [1] C:\Users\usuario\Documents\escuela\tesis  (hace 10 min · 2 archivos · Word)
+  [2] C:\Users\usuario\Downloads  (hace 2 h · 1 archivo · Microsoft Edge, Fotos)
+  [3] C:\Users\usuario\Documents\proyectos\api  (ayer a las 18:20 · Visual Studio Code)
+```
+
+- `--con word` deja solo las de lo que abriste con Word; también `excel`, `code`, `fotos`,
+  `explorer`... Si no reconoce el programa, dice cuáles tienen historial.
+- Se combina con un término (`fast --recientes tesis`), con `-m` (por cuándo las usaste:
+  `fast --con word -m semana`), con `-p` (solo dentro de esa carpeta), con `--json` (añade
+  `last_used`, `files` y `apps`) y con `-o` (abre la más reciente).
+- `fcd --recientes` y `fcd --con code` te dejan en la carpeta elegida.
+- Solo aparecen carpetas que siguen existiendo, en este equipo: las URL y las rutas de red
+  (`\\servidor\...`) se ignoran. Las carpetas ocultas (como AppData) solo salen con `-a`.
+
+**De dónde sale.** Windows anota lo que abres en sus *jump lists*: las listas de
+**Recientes** del Explorador y las que aparecen al hacer clic derecho en un programa de la
+barra de tareas. fast-folder-cli **solo las lee**, en tu equipo
+(`%APPDATA%\Microsoft\Windows\Recent\AutomaticDestinations`): no las modifica ni envía nada
+a ningún sitio. El programa de cada lista se reconoce por su identificador, con una tabla de
+los más comunes, los accesos directos del menú Inicio y los programas instalados; los que no
+se reconocen aparecen sin nombre.
+
+**Si no aparece nada nuevo**, puede que el historial esté desactivado. Actívalo en
+**Configuración → Personalización → Inicio → "Mostrar elementos abiertos recientemente en
+Inicio, las listas de accesos directos y el Explorador de archivos"**; desde entonces Windows
+vuelve a anotar lo que abres. fast-folder-cli avisa cuando está desactivado (también si lo
+desactiva una directiva de la empresa, que no se puede cambiar).
 
 ### Filtrar por fecha de modificación
 
@@ -573,7 +620,7 @@ recorre, aunque esté oculta: `-p %APPDATA%` funciona sin `--all`.
 | ---: | --- |
 | `0` | Se encontró al menos una carpeta. También sin argumentos fuera de una terminal: muestra la ayuda por la salida estándar. |
 | `1` | La búsqueda terminó sin coincidencias. |
-| `2` | Error de uso: bandera desconocida, ruta inexistente o patrón inválido (o, con `--apps`, no se pudo leer la lista de programas instalados). |
+| `2` | Error de uso: bandera desconocida, ruta inexistente o patrón inválido (o, con `--apps`, no se pudo leer la lista de programas instalados; con `--recientes`, el historial de Windows; con `--con`, no se reconoce el programa). |
 | `130` | Búsqueda interrumpida con <kbd>Ctrl</kbd> + <kbd>C</kbd> (se muestran los resultados parciales). |
 
 ---
@@ -649,7 +696,11 @@ fast-folder-cli/
 │   ├── search/                    # Búsqueda concurrente, coincidencia sin acentos, proyectos y tamaños
 │   ├── period/                    # Periodos de fecha en español ("hoy", "semana", "7d")
 │   ├── pathutil/                  # Resolución de %VARIABLES%, ~ y unidades
-│   ├── apps/                      # Apps instaladas (registro de Windows) y su carpeta
+│   ├── apps/                      # Apps instaladas (registro de Windows y menú Inicio) y su carpeta
+│   ├── jumplist/                  # Lector de las jump lists de Windows (compound files y DestList)
+│   ├── recent/                    # Carpetas recientes a partir de las jump lists, y nombre de cada programa
+│   ├── lnk/                       # Lector de accesos directos .lnk
+│   ├── config/                    # Archivo de configuración (TOML) y carpetas recientes del modo interactivo
 │   ├── launch/                    # Explorador, VS Code, terminal y portapapeles
 │   └── humanize/                  # Formato de números ("52,341"), tamaños ("1.5 KB") y plurales
 ├── go.mod
