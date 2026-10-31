@@ -1,0 +1,359 @@
+# Validación temporal del manifiesto de winget para AnthonyCZ6.FastFolderCLI 1.4.0.
+# Se ejecuta en VMs efímeras de GitHub Actions; la rama se borra después.
+name: Winget manifest validation
+
+on:
+  push:
+    branches:
+      - test/winget-1.4.0-validation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clean-install-x64:
+    name: Clean install (x64)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Show winget
+        shell: pwsh
+        run: |
+          winget --version
+          if ($LASTEXITCODE -ne 0) { throw "winget --version failed: $LASTEXITCODE" }
+          winget --info
+
+      - name: Verify 1.4.0 installer hash
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/AnthonyCZ6/fast-folder-cli/releases/download/v1.4.0/fast-folder-cli-setup.exe'
+          $file = Join-Path $env:RUNNER_TEMP 'fast-folder-cli-setup-1.4.0.exe'
+          Invoke-WebRequest -Uri $url -OutFile $file
+          $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+          if ($hash -ne '705F150CC2C9AD911C10704EE585E19B061624F3DACE7F18F6373E1CCA50EC9F') {
+            throw "Hash mismatch: $hash"
+          }
+          "Hash OK: $hash"
+
+      - name: Validate manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          winget validate --manifest .\testdata\winget\1.4.0 --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { throw "winget validate failed: $LASTEXITCODE" }
+
+      - name: Show manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          winget show --manifest .\testdata\winget\1.4.0 --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { throw "winget show failed: $LASTEXITCODE" }
+
+      - name: Install 1.4.0
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          winget install --manifest .\testdata\winget\1.4.0 --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { throw "winget install failed: $LASTEXITCODE" }
+
+      - name: Test CLI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\fast-folder-cli'
+          if (-not (Test-Path -LiteralPath $dir)) { throw "Install dir not found: $dir" }
+          $env:Path = "$dir;$env:Path"
+          $exe = Join-Path $dir 'fast-folder-cli.exe'
+
+          $version = & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw "fast-folder-cli --version exit $LASTEXITCODE" }
+          if ($version -notmatch '1\.4\.0') { throw "Unexpected version: $version" }
+          "fast-folder-cli --version: $version"
+
+          $out = Join-Path $env:RUNNER_TEMP 'ffcli-noargs.out'
+          $err = Join-Path $env:RUNNER_TEMP 'ffcli-noargs.err'
+          $p = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $out -RedirectStandardError $err
+          if ($p.ExitCode -ne 0) { throw "fast-folder-cli without args exit $($p.ExitCode)" }
+          "fast-folder-cli without args: exit 0"
+
+          $fast = & (Join-Path $dir 'fast.exe') --version
+          if ($LASTEXITCODE -ne 0) { throw "fast --version exit $LASTEXITCODE" }
+          if ($fast -notmatch '1\.4\.0') { throw "Unexpected fast version: $fast" }
+          "fast --version: $fast"
+
+          $fcd = Get-Command fcd -ErrorAction SilentlyContinue
+          if (-not $fcd) { throw 'fcd not found on PATH' }
+          "fcd: $($fcd.Source)"
+
+      - name: Check ARP and PATH
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\fast-folder-cli'
+          $arp = @(
+            Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
+              ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath } |
+              Where-Object { $_.DisplayName -eq 'fast-folder-cli' }
+          )
+          if ($arp.Count -ne 1) { throw "Expected 1 ARP entry, found $($arp.Count)" }
+          $arp | Select-Object DisplayName, DisplayVersion, Publisher, UninstallString | Format-List
+          if ($arp[0].DisplayVersion -notmatch '1\.4\.0') {
+            throw "Unexpected ARP version: $($arp[0].DisplayVersion)"
+          }
+
+          $userPath = (Get-ItemProperty -LiteralPath 'HKCU:\Environment' -Name Path -ErrorAction SilentlyContinue).Path
+          if (-not $userPath) { throw 'User PATH not found' }
+          if ($userPath -notlike "*$dir*") { throw "Install dir not in user PATH: $userPath" }
+          "User PATH contains: $dir"
+
+      - name: Uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          winget uninstall --id AnthonyCZ6.FastFolderCLI --silent --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { throw "winget uninstall failed: $LASTEXITCODE" }
+
+      - name: Verify cleanup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Start-Sleep -Seconds 2
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\fast-folder-cli'
+          if (Test-Path -LiteralPath $dir) { throw "Install dir still exists: $dir" }
+          $userPath = (Get-ItemProperty -LiteralPath 'HKCU:\Environment' -Name Path -ErrorAction SilentlyContinue).Path
+          if ($userPath -and $userPath -like "*$dir*") { throw "Install dir still in user PATH: $userPath" }
+          "Cleanup OK"
+
+      - name: Collect winget logs
+        if: always()
+        shell: pwsh
+        run: |
+          $src = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir'
+          $dst = Join-Path $env:RUNNER_TEMP 'winget-logs'
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          if (Test-Path -LiteralPath $src) {
+            Copy-Item -Path (Join-Path $src '*.log') -Destination $dst -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: winget-validation-x64
+          path: |
+            ${{ runner.temp }}/winget-logs/*.log
+            ${{ runner.temp }}/ffcli-noargs.*
+          if-no-files-found: ignore
+
+  upgrade-x64:
+    name: Upgrade 1.2.5 -> 1.4.0 (x64)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Verify 1.2.5 installer hash
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/AnthonyCZ6/fast-folder-cli/releases/download/v1.2.5/fast-folder-cli-setup.exe'
+          $file = Join-Path $env:RUNNER_TEMP 'fast-folder-cli-setup-1.2.5.exe'
+          Invoke-WebRequest -Uri $url -OutFile $file
+          $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+          if ($hash -ne 'E8ED3AEF62839A306D33555823ADE99A98FB970B83B8A760E8B9967ABCC55C60') {
+            throw "Hash mismatch: $hash"
+          }
+          "Hash OK: $hash"
+
+      - name: Install 1.2.5 silently
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Join-Path $env:RUNNER_TEMP 'fast-folder-cli-setup-1.2.5.exe'
+          $p = Start-Process -FilePath $setup -Wait -PassThru `
+            -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+          if ($p.ExitCode -ne 0) { throw "1.2.5 installer exit $($p.ExitCode)" }
+
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\fast-folder-cli'
+          $exe = Join-Path $dir 'fast-folder-cli.exe'
+          if (-not (Test-Path -LiteralPath $exe)) { throw "1.2.5 executable not found: $exe" }
+          $version = & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw "1.2.5 --version exit $LASTEXITCODE" }
+          if ($version -notmatch '1\.2\.5') { throw "Unexpected 1.2.5 version: $version" }
+          "Installed: $version"
+
+      - name: Upgrade to 1.4.0 with winget
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          winget install --manifest .\testdata\winget\1.4.0 --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+          if ($LASTEXITCODE -ne 0) {
+            "winget install returned $LASTEXITCODE; retrying with --force"
+            winget install --manifest .\testdata\winget\1.4.0 --silent --force --accept-package-agreements --accept-source-agreements --disable-interactivity
+            if ($LASTEXITCODE -ne 0) { throw "winget upgrade failed: $LASTEXITCODE" }
+          }
+
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\fast-folder-cli'
+          $exe = Join-Path $dir 'fast-folder-cli.exe'
+          $version = & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw "1.4.0 --version exit $LASTEXITCODE" }
+          if ($version -notmatch '1\.4\.0') { throw "Unexpected version after upgrade: $version" }
+          "Upgraded: $version"
+
+          $arp = @(
+            Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
+              ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath } |
+              Where-Object { $_.DisplayName -eq 'fast-folder-cli' }
+          )
+          if ($arp.Count -ne 1) { throw "Expected 1 ARP entry after upgrade, found $($arp.Count)" }
+          if ($arp[0].DisplayVersion -notmatch '1\.4\.0') {
+            throw "Unexpected ARP version after upgrade: $($arp[0].DisplayVersion)"
+          }
+          $arp | Select-Object DisplayName, DisplayVersion, Publisher | Format-List
+
+      - name: Uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          winget uninstall --id AnthonyCZ6.FastFolderCLI --silent --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { throw "winget uninstall failed: $LASTEXITCODE" }
+
+      - name: Verify cleanup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Start-Sleep -Seconds 2
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\fast-folder-cli'
+          if (Test-Path -LiteralPath $dir) { throw "Install dir still exists: $dir" }
+          $userPath = (Get-ItemProperty -LiteralPath 'HKCU:\Environment' -Name Path -ErrorAction SilentlyContinue).Path
+          if ($userPath -and $userPath -like "*$dir*") { throw "Install dir still in user PATH: $userPath" }
+          "Cleanup OK"
+
+      - name: Collect winget logs
+        if: always()
+        shell: pwsh
+        run: |
+          $src = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir'
+          $dst = Join-Path $env:RUNNER_TEMP 'winget-logs'
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          if (Test-Path -LiteralPath $src) {
+            Copy-Item -Path (Join-Path $src '*.log') -Destination $dst -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: winget-validation-upgrade-x64
+          path: ${{ runner.temp }}/winget-logs/*.log
+          if-no-files-found: ignore
+
+  clean-install-arm64:
+    name: Clean install (ARM64)
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Show winget
+        shell: pwsh
+        run: |
+          if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            throw 'winget is not available on the windows-11-arm runner'
+          }
+          winget --version
+          if ($LASTEXITCODE -ne 0) { throw "winget --version failed: $LASTEXITCODE" }
+          winget --info
+
+      - name: Verify 1.4.0 installer hash
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/AnthonyCZ6/fast-folder-cli/releases/download/v1.4.0/fast-folder-cli-setup.exe'
+          $file = Join-Path $env:RUNNER_TEMP 'fast-folder-cli-setup-1.4.0.exe'
+          Invoke-WebRequest -Uri $url -OutFile $file
+          $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+          if ($hash -ne '705F150CC2C9AD911C10704EE585E19B061624F3DACE7F18F6373E1CCA50EC9F') {
+            throw "Hash mismatch: $hash"
+          }
+          "Hash OK: $hash"
+
+      - name: Validate manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          winget validate --manifest .\testdata\winget\1.4.0 --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { throw "winget validate failed: $LASTEXITCODE" }
+
+      - name: Install 1.4.0
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          winget install --manifest .\testdata\winget\1.4.0 --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { throw "winget install failed: $LASTEXITCODE" }
+
+      - name: Test ARM64 binary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\fast-folder-cli'
+          $exe = Join-Path $dir 'fast-folder-cli.exe'
+          if (-not (Test-Path -LiteralPath $exe)) { throw "Install dir not found: $dir" }
+
+          $machine = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          "OS architecture: $machine"
+          if ($machine -ne 'Arm64') { throw "Expected Arm64 runner, got $machine" }
+
+          $version = & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw "fast-folder-cli --version exit $LASTEXITCODE" }
+          if ($version -notmatch '1\.4\.0') { throw "Unexpected version: $version" }
+          "fast-folder-cli --version: $version"
+
+          $out = Join-Path $env:RUNNER_TEMP 'ffcli-noargs.out'
+          $err = Join-Path $env:RUNNER_TEMP 'ffcli-noargs.err'
+          $p = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $out -RedirectStandardError $err
+          if ($p.ExitCode -ne 0) { throw "fast-folder-cli without args exit $($p.ExitCode)" }
+          "fast-folder-cli without args: exit 0"
+
+      - name: Uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          winget uninstall --id AnthonyCZ6.FastFolderCLI --silent --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { throw "winget uninstall failed: $LASTEXITCODE" }
+
+      - name: Verify cleanup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Start-Sleep -Seconds 2
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\fast-folder-cli'
+          if (Test-Path -LiteralPath $dir) { throw "Install dir still exists: $dir" }
+          "Cleanup OK"
+
+      - name: Collect winget logs
+        if: always()
+        shell: pwsh
+        run: |
+          $src = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir'
+          $dst = Join-Path $env:RUNNER_TEMP 'winget-logs'
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          if (Test-Path -LiteralPath $src) {
+            Copy-Item -Path (Join-Path $src '*.log') -Destination $dst -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: winget-validation-arm64
+          path: |
+            ${{ runner.temp }}/winget-logs/*.log
+            ${{ runner.temp }}/ffcli-noargs.*
+          if-no-files-found: ignore
