@@ -39,6 +39,19 @@ jobs:
             throw 'LocalManifestFiles is still disabled'
           }
 
+      # winget aplica MOTW (zona 3) al instalador descargado. En este runner,
+      # Inno Setup se queda esperando el aviso de "Open File - Security
+      # Warning" y el install nunca termina. Marcar .exe como tipo de bajo
+      # riesgo suprime ese aviso sin desactivar Defender.
+      - name: Disable MOTW execution warning
+        shell: pwsh
+        run: |
+          $assoc = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Associations'
+          New-Item -Path $assoc -Force | Out-Null
+          Set-ItemProperty -Path $assoc -Name 'LowRiskFileTypes' `
+            -Value '.exe;.msi;.bat;.cmd;.ps1;.vbs;.js' -Type String
+          Get-ItemProperty -Path $assoc -Name 'LowRiskFileTypes'
+
       - name: Verify 1.4.0 installer hash
         shell: pwsh
         run: |
@@ -233,6 +246,17 @@ jobs:
           if (($info -join "`n") -notmatch 'LocalManifestFiles\s+Enabled') {
             throw 'LocalManifestFiles is still disabled'
           }
+
+      # Mismo workaround que en el job de instalación limpia: sin esto winget
+      # deja el instalador esperando el aviso de seguridad de MOTW.
+      - name: Disable MOTW execution warning
+        shell: pwsh
+        run: |
+          $assoc = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Associations'
+          New-Item -Path $assoc -Force | Out-Null
+          Set-ItemProperty -Path $assoc -Name 'LowRiskFileTypes' `
+            -Value '.exe;.msi;.bat;.cmd;.ps1;.vbs;.js' -Type String
+          Get-ItemProperty -Path $assoc -Name 'LowRiskFileTypes'
 
       - name: Verify 1.2.5 installer hash
         shell: pwsh
