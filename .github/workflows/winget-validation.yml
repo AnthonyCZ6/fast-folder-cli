@@ -75,6 +75,8 @@ jobs:
               throw "winget validate failed: $code"
             }
           }
+          # El paso hereda el exit code del comando nativo; ya se validó arriba.
+          exit 0
 
       - name: Show manifest
         shell: pwsh
@@ -84,6 +86,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "winget show failed: $LASTEXITCODE" }
 
       - name: Install 1.4.0
+        timeout-minutes: 8
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -262,9 +265,15 @@ jobs:
           "Installed: $version"
 
       - name: Upgrade to 1.4.0 with winget
+        timeout-minutes: 8
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          # Deja que el instalador de 1.2.5 termine del todo antes de lanzar
+          # el de 1.4.0; si no, Inno Setup espera al mutex del anterior.
+          Start-Sleep -Seconds 15
+          Get-Process | Where-Object { $_.ProcessName -match 'fast-folder-cli|unins|setup' } |
+            Select-Object ProcessName, Id, StartTime | Format-Table
           winget install --manifest .\testdata\winget\1.4.0 --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
           if ($LASTEXITCODE -ne 0) {
             "winget install returned $LASTEXITCODE; retrying with --force"
